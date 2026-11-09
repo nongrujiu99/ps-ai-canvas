@@ -1,0 +1,15 @@
+{
+  "name": "ps-ai-local-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local image service for the Photoshop AI canvas plugin",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "sharp": "0.35.5"
+  }
+}
