@@ -3,8 +3,8 @@
 const { randomUUID } = require('node:crypto');
 const { problem } = require('./contract');
 
-function createJobManager({ provider, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), pollIntervalMs = 3000, timeoutMs = 180000 } = {}) {
-  if (!provider || typeof provider.submit !== 'function' || typeof provider.poll !== 'function') {
+function createJobManager({ provider, providerFactory, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), pollIntervalMs = 3000, timeoutMs = 180000 } = {}) {
+  if (typeof providerFactory !== 'function' && (!provider || typeof provider.submit !== 'function' || typeof provider.poll !== 'function')) {
     throw problem('INVALID_PROVIDER', '图像服务未配置。');
   }
   const jobs = new Map();
@@ -15,7 +15,11 @@ function createJobManager({ provider, now = Date.now, sleep = (ms) => new Promis
 
   async function run(job, request) {
     try {
-      const submitted = await provider.submit(request);
+      const jobProvider = providerFactory ? await providerFactory(request) : provider;
+      if (!jobProvider || typeof jobProvider.submit !== 'function' || typeof jobProvider.poll !== 'function') {
+        throw problem('INVALID_PROVIDER', '图像服务未配置。');
+      }
+      const submitted = await jobProvider.submit(request);
       job.remoteId = submitted.taskId;
       if (job.cancelled) return;
       job.status = 'running';
@@ -25,14 +29,14 @@ function createJobManager({ provider, now = Date.now, sleep = (ms) => new Promis
           job.errorCode = 'TASK_TIMEOUT';
           return;
         }
-        const poll = await provider.poll(job.remoteId);
+        const poll = await jobProvider.poll(job.remoteId);
         if (job.cancelled) return;
         if (poll.status === 'SUCCEEDED') {
           if (!Array.isArray(poll.resultUrls) || poll.resultUrls.length === 0) {
             throw problem('EMPTY_RESULT', '任务未返回结果。');
           }
           const results = [];
-          for (const url of poll.resultUrls) results.push(await provider.download(url));
+          for (const url of poll.resultUrls) results.push(await jobProvider.download(url));
           if (job.cancelled) return;
           job.results = results;
           job.status = 'succeeded';

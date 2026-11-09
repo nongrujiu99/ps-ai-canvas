@@ -67,3 +67,22 @@ test('provider failure text containing a key is redacted from public job state',
   assert.equal(job.status, 'failed');
   assert.equal(JSON.stringify(job).includes('sk-very-secret-key'), false);
 });
+
+test('provider factory creates a separate provider for each submitted job', async () => {
+  let next = 0;
+  const used = [];
+  const manager = createJobManager({ providerFactory: async () => {
+    const id = ++next;
+    return {
+      submit: async () => { used.push(id); return { taskId: `task-${id}` }; },
+      poll: async () => ({ status: 'SUCCEEDED', resultUrls: [`https://result.oss-cn-beijing.aliyuncs.com/${id}.png`] }),
+      download: async () => Buffer.from(`result-${id}`),
+    };
+  } });
+  const first = await manager.start({ operation: 'generate' });
+  const second = await manager.start({ operation: 'generate' });
+  await Promise.all([settled(manager, first.jobId), settled(manager, second.jobId)]);
+  assert.deepEqual(used, [1, 2]);
+  assert.equal(manager.getResult(first.jobId, 0).toString(), 'result-1');
+  assert.equal(manager.getResult(second.jobId, 0).toString(), 'result-2');
+});
