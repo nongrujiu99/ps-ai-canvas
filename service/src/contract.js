@@ -43,16 +43,21 @@ function validateJob(input) {
 
   let scales;
   if (operation === 'expand') {
-    scales = {};
-    for (const side of ['top', 'right', 'bottom', 'left']) {
-      const value = input.scales && input.scales[side];
-      if (!Number.isFinite(value) || value < 1 || value > 2) {
-        throw problem('INVALID_SCALE', '扩图比例必须在 1.0 到 2.0 之间。');
-      }
-      scales[side] = value;
+    if (input.mask && input.scales) {
+      throw problem('UNSUPPORTED_OPTION', '选区扩图与方向比例不能同时使用。');
     }
-    if (Object.values(scales).every((value) => value === 1)) {
-      throw problem('NO_EXPANSION', '至少一个方向需要扩展。');
+    if (!input.mask) {
+      scales = {};
+      for (const side of ['top', 'right', 'bottom', 'left']) {
+        const value = input.scales && input.scales[side];
+        if (!Number.isFinite(value) || value < 1 || value > 2) {
+          throw problem('INVALID_SCALE', '扩图比例必须在 1.0 到 2.0 之间。');
+        }
+        scales[side] = value;
+      }
+      if (Object.values(scales).every((value) => value === 1)) {
+        throw problem('NO_EXPANSION', '至少一个方向需要扩展。');
+      }
     }
   }
 
@@ -67,7 +72,7 @@ function validateJob(input) {
     ...(operation === 'generate' ? { size: input.size || '1024*1024' } : {}),
     ...(operation === 'editMasked' ? { image: input.image, mask: input.mask } : {}),
     ...(operation === 'editWhole' ? { image: input.image, strength: input.strength === undefined ? 0.5 : input.strength } : {}),
-    ...(operation === 'expand' ? { image: input.image, scales } : {}),
+    ...(operation === 'expand' ? { image: input.image, ...(scales ? { scales } : { mask: input.mask }) } : {}),
     ...(input.seed === undefined ? {} : { seed: input.seed }),
   };
 }

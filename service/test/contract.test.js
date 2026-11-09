@@ -26,6 +26,13 @@ test('expansion requires a changed direction within the model limit', () => {
   assert.throws(() => validateJob({ operation: 'expand', image, scales: { top: 1, right: 2.1, bottom: 1, left: 1 } }), { code: 'INVALID_SCALE' });
 });
 
+test('manual transparent-border expansion may supply a mask instead of slider scales', () => {
+  const job = validateJob({ operation: 'expand', image, mask, prompt: '' });
+  assert.equal(job.mask, mask);
+  assert.equal(job.scales, undefined);
+  assert.throws(() => validateJob({ operation: 'expand', image, mask, scales: { top: 1, right: 1.4, bottom: 1, left: 1 } }), { code: 'UNSUPPORTED_OPTION' });
+});
+
 test('generation requires a description and candidate count stays between one and four', () => {
   assert.throws(() => validateJob({ operation: 'generate', prompt: '' }), { code: 'PROMPT_REQUIRED' });
   assert.equal(validateJob({ operation: 'generate', prompt: '白色陶瓷花瓶', size: '1024*1024', n: 4 }).n, 4);
