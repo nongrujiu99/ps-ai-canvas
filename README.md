@@ -1,4 +1,4 @@
-# PS AI 画布插件
+# PS AI 画布
 
 面向 Windows 的 Photoshop AI 选区编辑、扩图与生成原型。旧版 Photoshop 2018–2023 使用 CEP，Photoshop 2024 起使用 UXP；两端共用本地 Node.js 服务和阿里云百炼适配器。编辑模型为 `wanx2.1-imageedit`，文生图模型为 `wan2.7-image`。
 
@@ -10,12 +10,23 @@
 - 本地服务：校验图像、提交异步任务、轮询、下载并转为 PNG；API Key 存入 Windows 凭据管理器。
 - 旧版脚本与新版命令提供快捷入口。快捷入口负责按选区分流到面板，仍需用户在面板确认并生成。
 
-## 构建和试用
+## 开发版使用方法
 
-1. 安装 Node.js 20.9 或更新版本。在源码的 `service` 目录运行 `npm ci`，再运行 `npm start`。预打包的 [`dist/service`](dist/service) 已含当前 Windows 环境的依赖，可直接在该目录运行 `node src/main.js`。
-2. 旧版 Photoshop：在 PowerShell 运行 `release/build-cep.ps1`，把 [`dist/cep/org.psai.canvas`](dist/cep/org.psai.canvas) 作为 CEP 扩展开发加载。详细步骤见 [CEP 说明](hosts/cep/README.md)。
-3. 新版 Photoshop：运行 `release/build-uxp.ps1`，在 UXP Developer Tool 加载 [`dist/uxp/org.psai.canvas.uxp/manifest.json`](dist/uxp/org.psai.canvas.uxp/manifest.json)。详细步骤见 [UXP 说明](hosts/uxp/README.md)。
-4. 启动服务后，复制窗口显示的本地连接码，在面板“设置”中先连接本地服务，再填入北京地域百炼 API Key 和业务空间 ID。连接码只供本机插件使用，不要公开；不要把 Key 写入源码或 PSD。
+本仓库已生成三个开发加载包；插件在 Photoshop 菜单和面板中统一显示为 **PS AI 画布**。需要 Windows、Node.js 20.9 或更新版本，以及北京地域百炼 API Key 和业务空间 ID。
+
+1. 在 PowerShell 进入 [`dist/service`](dist/service)，运行 `node .\src\main.js`。保持窗口打开，记下它显示的“Local connection code”。预打包服务带有当前 Windows 环境的依赖；换机器或架构时先在此目录运行 `npm ci`。
+2. 在**另一个 PowerShell 窗口**进入本仓库根目录，按 Photoshop 版本加载面板：
+   - **2018（19.x）**：运行 `powershell -ExecutionPolicy Bypass -File .\release\install-dev-cep.ps1 -CsxsVersion 8`。
+   - **2019–2020（20–21.x）**：同一命令改用 `-CsxsVersion 9`。
+   - **2021（22.x）**：同一命令改用 `-CsxsVersion 10`；**2022–2023（23–24.x）**：改用 `-CsxsVersion 11`。这几版尚未实机验证。
+   - **2024 及更新（25.x+）**：安装 UXP Developer Tool 并启用开发者模式，在工具中选择 **Add Plugin**，打开 [`dist/uxp/org.psai.canvas.uxp/manifest.json`](dist/uxp/org.psai.canvas.uxp/manifest.json)，点击 **Load**；在 Photoshop 的 **插件** 菜单打开 **PS AI 画布**。[UXP 加载细节](hosts/uxp/README.md)。
+
+   对使用 CEP 的版本，安装后重启 Photoshop，选择 **窗口 > 扩展 > PS AI 画布**。[CEP 安装细节](hosts/cep/README.md)。
+
+3. 点击面板右上角设置，输入本地连接码并点击“连接本地服务”；再填写百炼业务空间 ID、API Key，点击“保存百炼设置”。连接码只供本机插件使用；不要把 API Key 写入源码或 PSD。
+4. 打开 RGB 8 位文档，框选区域，选“选区编辑”并点击“生成预览”。不写描述会自然补全；写描述会局部重绘。查看候选后点“应用候选”。扩图可选择四向比例，或先手工扩大画布并框选新增透明边缘；文生图则选“生成”。
+
+旧版可选快捷脚本为 [`dist/cep/ps-ai-selection.jsx`](dist/cep/ps-ai-selection.jsx)，在 Photoshop **文件 > 脚本** 运行；新版命令名为“按选区打开 PS AI 画布”。两者只把当前选区带入面板，不会自动提交付费请求。
 
 三个包可通过 `release/build-cep.ps1`、`release/build-uxp.ps1`、`release/build-service.ps1` 重建，再运行 `release/verify-packages.ps1` 检查。服务自动测试：在 `service` 目录运行 `npm test`；面板逻辑测试：在仓库根目录运行 `node --test hosts/cep/test/*.test.js hosts/uxp/test/*.test.js`。
 

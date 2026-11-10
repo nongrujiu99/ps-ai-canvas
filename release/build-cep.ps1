@@ -21,5 +21,7 @@ foreach ($relative in $files) {
   New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
   Copy-Item -LiteralPath $source -Destination $target
 }
-Copy-Item -LiteralPath (Join-Path $workspace 'hosts\cep\jsx\quick-expand.jsx') -Destination (Join-Path $OutputRoot 'cep\quick-expand.jsx')
+$oldQuickScript = Join-Path (Split-Path $output -Parent) 'quick-expand.jsx'
+if (Test-Path -LiteralPath $oldQuickScript) { Remove-Item -LiteralPath $oldQuickScript -Force }
+Copy-Item -LiteralPath (Join-Path $workspace 'hosts\cep\jsx\ps-ai-selection.jsx') -Destination (Join-Path (Split-Path $output -Parent) 'ps-ai-selection.jsx')
 Write-Output $output

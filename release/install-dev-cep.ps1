@@ -14,4 +14,4 @@ Copy-Item -LiteralPath $source -Destination $target -Recurse
 $key = "HKCU:\Software\Adobe\CSXS.$CsxsVersion"
 New-Item -Path $key -Force | Out-Null
 New-ItemProperty -Path $key -Name PlayerDebugMode -PropertyType String -Value '1' -Force | Out-Null
-Write-Output "CEP development extension installed at $target. Restart Photoshop and open Window > Extensions > PS AI Canvas."
+Write-Output "CEP 开发版已安装到 $target。重启 Photoshop，打开 窗口 > 扩展 > PS AI 画布。"

@@ -5,6 +5,7 @@ $cep = Join-Path $dist 'cep\org.psai.canvas'
 $uxp = Join-Path $dist 'uxp\org.psai.canvas.uxp'
 $service = Join-Path $dist 'service'
 foreach ($path in @($cep, $uxp, $service)) { if (-not (Test-Path -LiteralPath $path)) { throw "Missing package: $path" } }
+if (-not (Test-Path -LiteralPath (Join-Path $dist 'cep\ps-ai-selection.jsx'))) { throw 'Missing CEP selection shortcut script.' }
 
 $manifest = [xml](Get-Content -LiteralPath (Join-Path $cep 'CSXS\manifest.xml') -Raw)
 $uxpManifest = Get-Content -LiteralPath (Join-Path $uxp 'manifest.json') -Raw | ConvertFrom-Json
