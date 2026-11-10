@@ -15,3 +15,21 @@ test('UXP controller previews a result and applies its raw pixels only after acc
   await controller.accept(0);
   assert.equal(applied, raw);
 });
+
+test('stopping a running job keeps late poll results out of the preview', async () => {
+  let finishPoll;
+  const host = { openSeparate: async () => ({}) };
+  const service = {
+    start: async () => ({ jobId: 'id' }),
+    get: () => new Promise((resolve) => { finishPoll = resolve; }),
+    cancel: async () => ({ status: 'cancelled' }),
+  };
+  const controller = createController({ host, service, wait: async () => {} });
+  const running = controller.run({ mode: 'generate', prompt: '花瓶' });
+  while (!finishPoll) await new Promise((resolve) => setImmediate(resolve));
+  await controller.cancel();
+  finishPoll({ status: 'succeeded', resultCount: 1 });
+  await running;
+  assert.equal(controller.state().status, 'cancelled');
+  assert.deepEqual(controller.state().previews, []);
+});

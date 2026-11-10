@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const sharp = require('sharp');
 const { createServer } = require('../src/server');
+const clientToken = 'a'.repeat(43);
 
 async function fixture() {
   const pixels = Buffer.alloc(512 * 512 * 4, 255);
@@ -16,13 +17,13 @@ async function withServer(run, configured = true, options = {}) {
   const submitted = [];
   const credentialStore = { read: async () => configured ? { apiKey: 'secret-test-key', workspaceId: 'workspace' } : null, save: async () => {} };
   const jobManager = { start: async (job) => { submitted.push(job); return { jobId: '11111111-1111-4111-8111-111111111111', status: 'pending' }; }, get: () => ({ jobId: '11111111-1111-4111-8111-111111111111', status: 'succeeded', resultCount: 1, errorCode: null }), getResult: () => Buffer.from('result-png'), cancelWait: () => ({ jobId: '11111111-1111-4111-8111-111111111111', status: 'cancelled' }), ...options.jobManager };
-  const server = createServer({ jobManager, credentialStore, allowedOrigins: ['plugin://psai'], ...options.server });
+  const server = createServer({ jobManager, credentialStore, allowedOrigins: ['plugin://psai', 'null'], clientToken, ...options.server });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try { await run({ base: `http://127.0.0.1:${server.address().port}`, submitted }); }
   finally { await new Promise((resolve) => server.close(resolve)); }
 }
 
-const headers = { 'X-PSAI-Client': 'ps-ai-plugin', 'Content-Type': 'application/json', Origin: 'plugin://psai' };
+const headers = { 'X-PSAI-Client': 'ps-ai-plugin', 'X-PSAI-Token': clientToken, 'Content-Type': 'application/json', Origin: 'plugin://psai' };
 
 test('non-billable inspection classifies a normal selection without submitting a job', async () => {
   await withServer(async ({ base, submitted }) => {
@@ -40,7 +41,7 @@ test('a valid generation job is accepted once and can be polled', async () => {
     assert.equal(response.status, 202);
     assert.equal((await response.json()).jobId, '11111111-1111-4111-8111-111111111111');
     assert.equal(submitted.length, 1);
-    const status = await fetch(base + '/v1/jobs/11111111-1111-4111-8111-111111111111', { headers: { 'X-PSAI-Client': 'ps-ai-plugin', Origin: 'plugin://psai' } });
+    const status = await fetch(base + '/v1/jobs/11111111-1111-4111-8111-111111111111', { headers: { 'X-PSAI-Client': 'ps-ai-plugin', 'X-PSAI-Token': clientToken, Origin: 'plugin://psai' } });
     assert.equal((await status.json()).resultCount, 1);
   });
 });
@@ -52,6 +53,19 @@ test('foreign browser origin and missing plugin header cannot create a billable 
     const missing = await fetch(base + '/v1/jobs', { method: 'POST', headers: { Origin: 'plugin://psai', 'Content-Type': 'application/json' }, body });
     assert.equal(foreign.status, 403);
     assert.equal(missing.status, 403);
+    assert.equal(submitted.length, 0);
+  });
+});
+
+test('an opaque browser origin cannot use the fixed client label without the private connection code', async () => {
+  await withServer(async ({ base, submitted }) => {
+    const body = JSON.stringify({ operation: 'generate', prompt: '花瓶' });
+    const preflight = await fetch(base + '/v1/jobs', { method: 'OPTIONS', headers: { Origin: 'null', 'Access-Control-Request-Headers': 'X-PSAI-Client, X-PSAI-Token, Content-Type' } });
+    assert.equal(preflight.status, 204);
+    const billable = await fetch(base + '/v1/jobs', { method: 'POST', headers: { ...headers, Origin: 'null', 'X-PSAI-Token': '' }, body });
+    const overwrite = await fetch(base + '/v1/settings/key', { method: 'PUT', headers: { ...headers, Origin: 'null', 'X-PSAI-Token': '' }, body: JSON.stringify({ apiKey: 'attacker', workspaceId: 'attacker' }) });
+    assert.equal(billable.status, 403);
+    assert.equal(overwrite.status, 403);
     assert.equal(submitted.length, 0);
   });
 });
@@ -71,9 +85,22 @@ test('malformed JSON, wrong content type, and missing key fail before submission
   }, false);
 });
 
+test('whole repaint with an irregular transparent hole is rejected before billing', async () => {
+  await withServer(async ({ base, submitted }) => {
+    const pixels = Buffer.alloc(512 * 512 * 4, 255);
+    pixels[(256 * 512 + 256) * 4 + 3] = 0;
+    const png = await sharp(pixels, { raw: { width: 512, height: 512, channels: 4 } }).png().toBuffer();
+    const image = { kind: 'encoded', dataUrl: 'data:image/png;base64,' + png.toString('base64') };
+    const response = await fetch(base + '/v1/jobs', { method: 'POST', headers, body: JSON.stringify({ operation: 'editWhole', prompt: '黄昏', image }) });
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).code, 'IRREGULAR_TRANSPARENCY');
+    assert.equal(submitted.length, 0);
+  });
+});
+
 test('errors and credential status never expose a stored API key', async () => {
   await withServer(async ({ base }) => {
-    const status = await fetch(base + '/v1/settings/status', { headers: { 'X-PSAI-Client': 'ps-ai-plugin', Origin: 'plugin://psai' } });
+    const status = await fetch(base + '/v1/settings/status', { headers: { 'X-PSAI-Client': 'ps-ai-plugin', 'X-PSAI-Token': clientToken, Origin: 'plugin://psai' } });
     assert.deepEqual(await status.json(), { configured: true, workspaceId: 'workspace' });
     const failed = await fetch(base + '/v1/jobs', { method: 'POST', headers, body: JSON.stringify({ operation: 'editWhole', prompt: '' }) });
     assert.equal((await failed.text()).includes('secret-test-key'), false);
@@ -92,10 +119,10 @@ test('result PNG and raw RGBA endpoints return local bytes and dimensions', asyn
   const png = await sharp({ create: { width: 2, height: 3, channels: 4, background: '#123456' } }).png().toBuffer();
   await withServer(async ({ base }) => {
     const url = base + '/v1/results/11111111-1111-4111-8111-111111111111/0';
-    const pngResponse = await fetch(url, { headers: { 'X-PSAI-Client': 'ps-ai-plugin', Origin: 'plugin://psai' } });
+    const pngResponse = await fetch(url, { headers: { 'X-PSAI-Client': 'ps-ai-plugin', 'X-PSAI-Token': clientToken, Origin: 'plugin://psai' } });
     assert.equal(pngResponse.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await pngResponse.arrayBuffer()), png);
-    const rawResponse = await fetch(url + '/raw', { headers: { 'X-PSAI-Client': 'ps-ai-plugin', Origin: 'plugin://psai' } });
+    const rawResponse = await fetch(url + '/raw', { headers: { 'X-PSAI-Client': 'ps-ai-plugin', 'X-PSAI-Token': clientToken, Origin: 'plugin://psai' } });
     assert.equal(rawResponse.headers.get('x-image-width'), '2');
     assert.equal(rawResponse.headers.get('x-image-height'), '3');
     assert.match(rawResponse.headers.get('access-control-expose-headers') || '', /X-Image-Width/);

@@ -46,12 +46,12 @@
     host.capture('expand', {}).then(function (capture) {
       if (!capture.mask) { $('status').textContent = '请先框选画面或新增的透明边缘。'; return; }
       service.inspect({ image: capture.image, mask: capture.mask }).then(function (result) {
-        if (capture.maskPath) window.cep.fs.deleteFile(capture.maskPath);
+        host.dispose(capture);
         if (result.selectionKind === 'transparentBorder') modeChanged('expand');
         else if (result.selectionKind === 'inside') modeChanged('edit');
         else { $('status').textContent = '选区不明确，请调整选区后再试。'; return; }
         $('status').textContent = '已按选区识别操作。确认描述后点击“生成预览”。';
-      }, showError);
+      }, function (error) { host.dispose(capture); showError(error); });
     }, showError);
   }
 
@@ -61,11 +61,20 @@
   $('run').addEventListener('click', function () { controller.run(values()).catch(showError); });
   $('cancel').addEventListener('click', function () { controller.cancel().catch(showError); });
   $('settings-toggle').addEventListener('click', function () { $('settings').classList.toggle('hidden'); });
+  $('settings-close').addEventListener('click', function () { $('settings').classList.add('hidden'); });
+  $('save-token').addEventListener('click', function () {
+    try {
+      service.setToken($('client-token').value);
+      $('client-token').value = '';
+      service.status().then(function () { $('settings-status').textContent = '本地服务已连接。'; }, function (error) { $('settings-status').textContent = error.message; });
+    } catch (error) { $('settings-status').textContent = error.message; }
+  });
   $('save-key').addEventListener('click', function () {
     service.saveKey($('api-key').value, $('workspace-id').value).then(function () { $('api-key').value = ''; $('settings-status').textContent = '设置已保存。'; }, function (error) { $('settings-status').textContent = error.message; });
   });
-  service.status().then(function (status) { $('settings-status').textContent = status.configured ? '已配置业务空间 ' + status.workspaceId : '尚未配置。'; if (status.workspaceId) $('workspace-id').value = status.workspaceId; }, function () { $('settings-status').textContent = '本地服务尚未启动。'; });
+  service.status().then(function (status) { $('settings-status').textContent = status.configured ? '已配置业务空间 ' + status.workspaceId : '尚未配置百炼。'; if (status.workspaceId) $('workspace-id').value = status.workspaceId; }, function () { $('settings-status').textContent = '请启动本地服务并输入连接码。'; });
   cs.addEventListener('org.psai.canvas.quick', quickRoute);
+  window.addEventListener('unload', function () { controller.dispose(); });
   modeChanged('edit');
   refreshDocument();
 }());

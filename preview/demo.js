@@ -21,6 +21,8 @@
   for (var i = 0; i < modes.length; i++) modes[i].addEventListener('click', function () { setMode(this.getAttribute('data-mode')); });
   $('whole').addEventListener('change', function () { setMode(mode); });
   $('settings-toggle').addEventListener('click', function () { $('settings').classList.toggle('hidden'); });
+  $('settings-close').addEventListener('click', function () { $('settings').classList.add('hidden'); });
+  $('save-token').addEventListener('click', function () { $('settings-status').textContent = '演示页面不会保存连接码。'; $('client-token').value = ''; });
   $('save-key').addEventListener('click', function () { $('settings-status').textContent = '演示页面不会保存或发送密钥。'; $('api-key').value = ''; });
   $('run').addEventListener('click', function () {
     var prompt = $('prompt').value.trim();

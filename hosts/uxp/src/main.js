@@ -61,8 +61,16 @@ $('whole').addEventListener('change', () => modeChanged(controller.state().mode)
 $('run').addEventListener('click', () => controller.run(values()).catch(showError));
 $('cancel').addEventListener('click', () => controller.cancel().catch(showError));
 $('settings-toggle').addEventListener('click', () => $('settings').classList.toggle('hidden'));
+$('settings-close').addEventListener('click', () => $('settings').classList.add('hidden'));
+$('save-token').addEventListener('click', () => {
+  try {
+    service.setToken($('client-token').value);
+    $('client-token').value = '';
+    service.status().then(() => { $('settings-status').textContent = '本地服务已连接。'; }, (error) => { $('settings-status').textContent = error.message; });
+  } catch (error) { $('settings-status').textContent = error.message; }
+});
 $('save-key').addEventListener('click', () => service.saveKey($('api-key').value, $('workspace-id').value).then(() => { $('api-key').value = ''; $('settings-status').textContent = '设置已保存。'; }, (error) => { $('settings-status').textContent = error.message; }));
-service.status().then((status) => { $('settings-status').textContent = status.configured ? `已配置业务空间 ${status.workspaceId}` : '尚未配置。'; if (status.workspaceId) $('workspace-id').value = status.workspaceId; }, () => { $('settings-status').textContent = '本地服务尚未启动。'; });
+service.status().then((status) => { $('settings-status').textContent = status.configured ? `已配置业务空间 ${status.workspaceId}` : '尚未配置百炼。'; if (status.workspaceId) $('workspace-id').value = status.workspaceId; }, () => { $('settings-status').textContent = '请启动本地服务并输入连接码。'; });
 modeChanged('edit');
 refreshDocument();
 

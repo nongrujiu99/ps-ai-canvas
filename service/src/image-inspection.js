@@ -108,7 +108,7 @@ async function inspectImage(pngBytes, maskBytes) {
     }
   }
 
-  return { width, height, opaqueBounds, selectionKind };
+  return { width, height, opaqueBounds, selectionKind, regularTransparency: regular };
 }
 
 async function prepareExpansion(pngBytes, maskBytes) {

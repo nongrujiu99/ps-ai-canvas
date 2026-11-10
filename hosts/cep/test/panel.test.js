@@ -63,3 +63,17 @@ test('accepting a changed document opens the chosen result separately', async ()
   const result = await controller.accept(0);
   assert.deepEqual(result, { documentId: 3 });
 });
+
+test('stopping a running job keeps late poll results out of the preview', async () => {
+  const { host, service } = fake();
+  let finishPoll;
+  service.get = () => new Promise((resolve) => { finishPoll = resolve; });
+  const controller = createController({ host, service, wait: async () => {} });
+  const running = controller.run({ mode: 'generate', prompt: '花瓶' });
+  while (!finishPoll) await new Promise((resolve) => setImmediate(resolve));
+  await controller.cancel();
+  finishPoll({ status: 'succeeded', resultCount: 1 });
+  await running;
+  assert.equal(controller.state().status, 'cancelled');
+  assert.deepEqual(controller.state().previews, []);
+});

@@ -48,3 +48,19 @@ test('a rejected application removes staged result and captured mask files', asy
   await assert.rejects(host.apply('data:image/png;base64,cG5n', { context: { documentId: 7 }, maskPath: 'C:\\Temp\\mask.png' }), { code: 'STALE_DOCUMENT' });
   assert.deepEqual(removed, ['C:\\Temp\\result.png', 'C:\\Temp\\mask.png']);
 });
+
+test('capture read failure removes both temporary Photoshop files', async () => {
+  const removed = [];
+  const cs = { evalScript: (_, done) => done(JSON.stringify({ ok: true, value: { imagePath: 'source.png', maskPath: 'mask.png', context: {} } })) };
+  const fs = { readFile: (name) => name === 'source.png' ? { err: 0, data: 'cG5n' } : { err: 1 }, deleteFile: (name) => { removed.push(name); } };
+  const host = createHost({ cs, fs, encoding: { Base64: 1 } });
+  await assert.rejects(host.capture('editMasked'), /无法读取/);
+  assert.deepEqual(removed, ['source.png', 'mask.png']);
+});
+
+test('abandoned capture releases its temporary mask', () => {
+  const removed = [];
+  const host = createHost({ cs: {}, fs: { deleteFile: (name) => removed.push(name) }, encoding: {} });
+  host.dispose({ maskPath: 'mask.png' });
+  assert.deepEqual(removed, ['mask.png']);
+});

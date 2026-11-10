@@ -4,14 +4,17 @@
 }(this, function () {
   'use strict';
 
-  function createClient(base, Xhr) {
+  function createClient(base, Xhr, tokenStore) {
     Xhr = Xhr || XMLHttpRequest;
     base = base || 'http://127.0.0.1:32145';
+    tokenStore = tokenStore || (typeof localStorage === 'undefined' ? null : localStorage);
     function request(method, path, body, binary) {
       return new Promise(function (resolve, reject) {
         var xhr = new Xhr();
         xhr.open(method, base + path, true);
         xhr.setRequestHeader('X-PSAI-Client', 'ps-ai-plugin');
+        var token = tokenStore && tokenStore.getItem('psai.clientToken');
+        if (token) xhr.setRequestHeader('X-PSAI-Token', token);
         if (body !== undefined) xhr.setRequestHeader('Content-Type', 'application/json');
         if (binary) xhr.responseType = 'arraybuffer';
         xhr.timeout = 30000;
@@ -46,6 +49,11 @@
       cancel: function (id) { return request('DELETE', '/v1/jobs/' + encodeURIComponent(id)); },
       status: function () { return request('GET', '/v1/settings/status'); },
       saveKey: function (apiKey, workspaceId) { return request('PUT', '/v1/settings/key', { apiKey: apiKey, workspaceId: workspaceId }); },
+      setToken: function (token) {
+        token = String(token || '').trim();
+        if (!/^[A-Za-z0-9_-]{43}$/.test(token) || !tokenStore) throw new Error('请输入本地服务显示的连接码。');
+        tokenStore.setItem('psai.clientToken', token);
+      },
     };
   }
   return { createClient: createClient };

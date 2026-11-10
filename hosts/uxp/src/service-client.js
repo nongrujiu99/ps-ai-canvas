@@ -2,11 +2,12 @@
 
 const { toBase64 } = require('./imaging-adapter');
 
-function createClient(base = 'http://127.0.0.1:32145', fetchImpl = fetch) {
+function createClient(base = 'http://127.0.0.1:32145', fetchImpl = fetch, tokenStore = (typeof localStorage === 'undefined' ? null : localStorage)) {
   async function request(method, path, body) {
     let response;
     try {
-      response = await fetchImpl(base + path, { method, headers: { 'X-PSAI-Client': 'ps-ai-plugin', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const token = tokenStore && tokenStore.getItem('psai.clientToken');
+      response = await fetchImpl(base + path, { method, headers: { 'X-PSAI-Client': 'ps-ai-plugin', ...(token ? { 'X-PSAI-Token': token } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     } catch { throw new Error('无法连接本地服务，请启动 PS AI 本地服务后重试。'); }
     if (!response.ok) {
       let data = {};
@@ -24,6 +25,11 @@ function createClient(base = 'http://127.0.0.1:32145', fetchImpl = fetch) {
     cancel: async (id) => (await request('DELETE', '/v1/jobs/' + encodeURIComponent(id))).json(),
     status: async () => (await request('GET', '/v1/settings/status')).json(),
     saveKey: async (apiKey, workspaceId) => (await request('PUT', '/v1/settings/key', { apiKey, workspaceId })).json(),
+    setToken: (token) => {
+      token = String(token || '').trim();
+      if (!/^[A-Za-z0-9_-]{43}$/.test(token) || !tokenStore) throw new Error('请输入本地服务显示的连接码。');
+      tokenStore.setItem('psai.clientToken', token);
+    },
     result: async (id, index) => {
       const path = '/v1/results/' + encodeURIComponent(id) + '/' + index;
       const png = new Uint8Array(await (await request('GET', path)).arrayBuffer());

@@ -16,3 +16,14 @@ test('UXP result client fetches preview PNG and full raw pixels from loopback', 
   assert.equal(paths.length, 2);
   assert.equal(paths[0][1], 'ps-ai-plugin');
 });
+
+test('UXP client includes the paired local code on later requests', async () => {
+  const items = new Map();
+  const store = { getItem: (key) => items.get(key), setItem: (key, value) => items.set(key, value) };
+  let sent;
+  const fetchImpl = async (_url, init) => { sent = init.headers; return new Response(JSON.stringify({ configured: false }), { headers: { 'content-type': 'application/json' } }); };
+  const client = createClient('http://127.0.0.1:32145', fetchImpl, store);
+  client.setToken('a'.repeat(43));
+  await client.status();
+  assert.equal(sent['X-PSAI-Token'], 'a'.repeat(43));
+});

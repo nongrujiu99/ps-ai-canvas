@@ -20,7 +20,7 @@ foreach ($file in @('index.html','js\CSInterface.js','js\host.js','js\panel.js',
 foreach ($file in @('index.html','src\main.js','src\panel.js','src\photoshop-host.js','src\imaging-adapter.js','src\service-client.js')) {
   if (-not (Test-Path -LiteralPath (Join-Path $uxp $file))) { throw "Missing UXP file: $file" }
 }
-foreach ($file in @('package.json','package-lock.json','src\main.js','src\server.js','scripts\wincred.ps1')) {
+foreach ($file in @('package.json','package-lock.json','src\main.js','src\server.js','src\client-token.js','scripts\wincred.ps1')) {
   if (-not (Test-Path -LiteralPath (Join-Path $service $file))) { throw "Missing service file: $file" }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $service 'node_modules\sharp'))) { throw 'Packaged service dependencies are missing. Run npm ci in service first.' }

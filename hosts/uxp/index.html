@@ -24,7 +24,7 @@
       <p id="status" role="status" class="status">结果会先在这里预览，确认后再写入 Photoshop。</p>
     </section>
     <section id="previews" class="previews hidden" aria-label="生成结果"></section>
-    <section id="settings" class="settings hidden"><h2>百炼设置</h2><p>北京地域 · API Key 保存在当前 Windows 用户的系统凭据中。</p><label>业务空间 ID <input id="workspace-id" autocomplete="off" placeholder="workspace_xxx"></label><label>API Key <input id="api-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显"></label><button id="save-key" class="secondary">保存设置</button><p id="settings-status" class="status"></p></section>
+    <section id="settings" class="settings hidden"><div class="settings-head"><h2>百炼设置</h2><button id="settings-close" class="icon" aria-label="返回">×</button></div><p>先输入本地服务窗口显示的连接码。北京地域 API Key 保存在当前 Windows 用户的系统凭据中。</p><label>本地连接码 <input id="client-token" type="password" autocomplete="off" placeholder="服务启动窗口显示"></label><button id="save-token" class="secondary">连接本地服务</button><p id="settings-status" class="status"></p><label>业务空间 ID <input id="workspace-id" autocomplete="off" placeholder="workspace_xxx"></label><label>API Key <input id="api-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显"></label><button id="save-key" class="secondary">保存百炼设置</button></section>
   </main>
   <script src="src/main.js"></script>
 </body>

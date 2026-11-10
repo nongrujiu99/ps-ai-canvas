@@ -8,7 +8,7 @@ function providerError(code, message) {
   return problem(code, message);
 }
 
-function createAliyunProvider({ fetchImpl = fetch, endpoint, apiKey }) {
+function createAliyunProvider({ fetchImpl = fetch, endpoint, apiKey, requestTimeoutMs = 30000 }) {
   const base = new URL(endpoint);
   if (base.protocol !== 'https:' || !base.hostname.endsWith('.cn-beijing.maas.aliyuncs.com')) {
     throw providerError('INVALID_ENDPOINT', '百炼业务空间地址无效。');
@@ -23,6 +23,7 @@ function createAliyunProvider({ fetchImpl = fetch, endpoint, apiKey }) {
     try {
       response = await fetchImpl(url, {
         ...init,
+        signal: AbortSignal.timeout(requestTimeoutMs),
         headers: { Authorization: `Bearer ${apiKey}`, ...(init.headers || {}) },
       });
     } catch {
@@ -120,9 +121,11 @@ function createAliyunProvider({ fetchImpl = fetch, endpoint, apiKey }) {
       throw providerError('RESULT_URL', '结果地址无效。');
     }
     let response;
-    try { response = await fetchImpl(target.href); } catch { throw providerError('RESULT_DOWNLOAD', '结果下载失败。'); }
+    try { response = await fetchImpl(target.href, { signal: AbortSignal.timeout(requestTimeoutMs) }); } catch { throw providerError('RESULT_DOWNLOAD', '结果下载失败。'); }
     if (!response.ok) throw providerError('RESULT_DOWNLOAD', '结果下载失败。');
-    const bytes = Buffer.from(await response.arrayBuffer());
+    let bytes;
+    try { bytes = Buffer.from(await response.arrayBuffer()); }
+    catch { throw providerError('RESULT_DOWNLOAD', '结果下载失败。'); }
     if (bytes.length === 0 || bytes.length > 30 * 1024 * 1024) throw providerError('RESULT_DOWNLOAD', '结果文件无效。');
     try { return await sharp(bytes).png().toBuffer(); }
     catch { throw providerError('RESULT_DOWNLOAD', '结果图像无法读取。'); }

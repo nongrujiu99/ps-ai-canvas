@@ -1,11 +1,14 @@
 'use strict';
 
 const http = require('node:http');
+const { timingSafeEqual } = require('node:crypto');
 const sharp = require('sharp');
 const { validateJob, problem } = require('./contract');
 const { decodeCapture, inspectImage, prepareExpansion } = require('./image-inspection');
 
-function createServer({ jobManager, credentialStore, allowedOrigins = [], maxBodyBytes = 160 * 1024 * 1024 }) {
+function createServer({ jobManager, credentialStore, allowedOrigins = [], clientToken, maxBodyBytes = 160 * 1024 * 1024 }) {
+  if (!clientToken || typeof clientToken !== 'string') throw new Error('Local connection token is required');
+  const expectedToken = Buffer.from(clientToken);
   function send(res, status, body, origin) {
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -50,12 +53,13 @@ function createServer({ jobManager, credentialStore, allowedOrigins = [], maxBod
     }
     if (req.method === 'OPTIONS') {
       if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
-      res.writeHead(204, { 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-PSAI-Client', 'Cache-Control': 'no-store' });
+      res.writeHead(204, { 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, X-PSAI-Client, X-PSAI-Token', 'Cache-Control': 'no-store' });
       res.end();
       return;
     }
-    if (req.headers['x-psai-client'] !== 'ps-ai-plugin') {
-      send(res, 403, { code: 'FORBIDDEN', message: '缺少插件请求标识。' }, origin);
+    const suppliedToken = Buffer.from(String(req.headers['x-psai-token'] || ''));
+    if (req.headers['x-psai-client'] !== 'ps-ai-plugin' || suppliedToken.length !== expectedToken.length || !timingSafeEqual(suppliedToken, expectedToken)) {
+      send(res, 403, { code: 'FORBIDDEN', message: '本地连接码无效，请在插件设置中重新填写。' }, origin);
       return;
     }
     const path = new URL(req.url, 'http://127.0.0.1').pathname;
@@ -83,6 +87,9 @@ function createServer({ jobManager, credentialStore, allowedOrigins = [], maxBod
         if (job.image) {
           const { pngBytes, maskBytes } = await decodeCapture(job.image, job.mask);
           const inspected = await inspectImage(pngBytes, maskBytes);
+          if ((job.operation === 'editWhole' || job.operation === 'expand' && !job.mask) && !inspected.regularTransparency) {
+            throw problem('IRREGULAR_TRANSPARENCY', '当前画面有不规则透明区域，请先整理画布。');
+          }
           if (job.operation === 'editMasked' && inspected.selectionKind !== 'inside') {
             throw problem('INVALID_SELECTION', '请选择画布内的编辑区域。');
           }

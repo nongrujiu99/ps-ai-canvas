@@ -20,11 +20,13 @@
       if (!value || !value.trim()) throw issue('PROMPT_REQUIRED', '请先输入画面描述。');
     }
     function poll(jobId) {
+      if (state.status === 'cancelled') return Promise.resolve();
       return service.get(jobId).then(function (job) {
+        if (state.status === 'cancelled') return;
         if (job.status === 'succeeded') {
           var tasks = [];
           for (var i = 0; i < job.resultCount; i++) tasks.push(service.result(jobId, i));
-          return Promise.all(tasks).then(function (previews) { change({ status: 'preview', previews: previews, message: '选择满意的结果后应用。' }); return previews; });
+          return Promise.all(tasks).then(function (previews) { if (state.status === 'cancelled') return; change({ status: 'preview', previews: previews, message: '选择满意的结果后应用。' }); return previews; });
         }
         if (job.status === 'failed' || job.status === 'cancelled') throw issue(job.errorCode || 'JOB_FAILED', '生成任务未完成。');
         return wait(1200).then(function () { return poll(jobId); });
@@ -72,6 +74,7 @@
         change({ jobId: started.jobId, status: 'running', message: '正在生成预览…' });
         return poll(started.jobId);
       }).catch(function (error) {
+        if (state.status === 'cancelled') return;
         change({ status: 'error', message: error.message || '操作失败。' });
         throw error;
       });
@@ -88,7 +91,8 @@
     }
     function cancel() {
       if (!state.jobId || state.status !== 'running') return Promise.resolve();
-      return service.cancel(state.jobId).then(function () { change({ status: 'cancelled', message: '已停止等待；云端任务可能仍在运行。' }); });
+      change({ status: 'cancelled', message: '已停止等待；云端任务可能仍在运行。' });
+      return service.cancel(state.jobId);
     }
     return { state: function () { return Object.assign({}, state); }, setMode: function (mode) { change({ mode: mode }); }, run: run, accept: accept, cancel: cancel };
   }

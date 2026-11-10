@@ -82,3 +82,11 @@ test('download normalizes a JPEG cloud result to PNG for both Photoshop hosts', 
   const png = await provider.download('https://example.oss-cn-beijing.aliyuncs.com/result.jpg');
   assert.equal((await sharp(png).metadata()).format, 'png');
 });
+
+test('a stalled cloud request is aborted within the configured request deadline', async () => {
+  const fetchImpl = (_url, init) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+  });
+  const provider = createAliyunProvider({ fetchImpl, endpoint, apiKey: 'test-key', requestTimeoutMs: 10 });
+  await assert.rejects(provider.poll('task-1'), { code: 'ALIYUN_NETWORK' });
+});

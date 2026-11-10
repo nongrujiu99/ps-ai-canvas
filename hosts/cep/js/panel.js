@@ -20,11 +20,13 @@
       if (!value || !value.trim()) throw issue('PROMPT_REQUIRED', '请先输入画面描述。');
     }
     function poll(jobId) {
+      if (state.status === 'cancelled') return Promise.resolve();
       return service.get(jobId).then(function (job) {
+        if (state.status === 'cancelled') return;
         if (job.status === 'succeeded') {
           var tasks = [];
           for (var i = 0; i < job.resultCount; i++) tasks.push(service.result(jobId, i));
-          return Promise.all(tasks).then(function (previews) { change({ status: 'preview', previews: previews, message: '选择满意的结果后应用。' }); return previews; });
+          return Promise.all(tasks).then(function (previews) { if (state.status === 'cancelled') return; change({ status: 'preview', previews: previews, message: '选择满意的结果后应用。' }); return previews; });
         }
         if (job.status === 'failed' || job.status === 'cancelled') throw issue(job.errorCode || 'JOB_FAILED', '生成任务未完成。');
         return wait(1200).then(function () { return poll(jobId); });
@@ -41,9 +43,12 @@
         if (!Number.isInteger(n) || n < 1 || n > 4) throw issue('INVALID_COUNT', '候选数量须为 1 到 4。');
         if ((n > 1 || state.status === 'preview') && !confirmCost()) throw issue('COST_DECLINED', '已取消额外生成请求。');
       } catch (error) { return Promise.reject(error); }
-      change({ mode: mode, status: 'preparing', message: '正在检查 Photoshop 画面…', previews: [], capture: null });
+      if (state.capture && host.dispose) host.dispose(state.capture);
+      change({ mode: mode, status: 'preparing', message: '正在检查 Photoshop 画面…', previews: [], capture: null, jobId: null });
+      var activeCapture = null;
       var capturePromise = mode === 'generate' ? Promise.resolve(null) : host.capture(whole ? 'editWhole' : mode === 'expand' ? 'expand' : 'editMasked', { scales: input.scales });
       return capturePromise.then(function (capture) {
+        activeCapture = capture;
         if (mode === 'generate' || whole) return { capture: capture, operation: mode === 'generate' ? 'generate' : 'editWhole' };
         if (!capture.mask) {
           if (mode === 'edit') throw issue('NO_SELECTION', '请先框选需要编辑的区域。');
@@ -72,6 +77,8 @@
         change({ jobId: started.jobId, status: 'running', message: '正在生成预览…' });
         return poll(started.jobId);
       }).catch(function (error) {
+        if (activeCapture && host.dispose) host.dispose(activeCapture);
+        if (state.status === 'cancelled') return;
         change({ status: 'error', message: error.message || '操作失败。' });
         throw error;
       });
@@ -84,13 +91,16 @@
         if (['STALE_DOCUMENT', 'STALE_SELECTION', 'RESULT_SIZE', 'EXPANSION_REVIEW'].indexOf(error.code) >= 0) return host.openSeparate(png);
         throw error;
       });
-      return action.then(function (result) { change({ status: 'applied', message: '结果已打开或加入新图层。' }); return result; });
+      return action.then(function (result) { if (capture && host.dispose) host.dispose(capture); change({ status: 'applied', capture: null, message: '结果已打开或加入新图层。' }); return result; });
     }
     function cancel() {
       if (!state.jobId || state.status !== 'running') return Promise.resolve();
-      return service.cancel(state.jobId).then(function () { change({ status: 'cancelled', message: '已停止等待；云端任务可能仍在运行。' }); });
+      if (state.capture && host.dispose) host.dispose(state.capture);
+      change({ status: 'cancelled', message: '已停止等待；云端任务可能仍在运行。' });
+      return service.cancel(state.jobId);
     }
-    return { state: function () { return Object.assign({}, state); }, setMode: function (mode) { change({ mode: mode }); }, run: run, accept: accept, cancel: cancel };
+    function dispose() { if (state.capture && host.dispose) host.dispose(state.capture); change({ capture: null }); }
+    return { state: function () { return Object.assign({}, state); }, setMode: function (mode) { change({ mode: mode }); }, run: run, accept: accept, cancel: cancel, dispose: dispose };
   }
 
   return { createController: createController };

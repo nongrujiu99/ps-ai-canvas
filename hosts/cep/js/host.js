@@ -52,12 +52,19 @@
       inspect: function () { return invoke('inspect'); },
       capture: function (operation, settings) {
         return invoke('capture', [operation, settings || {}]).then(function (value) {
-          var image = readPng(value.imagePath);
-          var mask = value.maskPath ? readPng(value.maskPath) : null;
-          fs.deleteFile(value.imagePath);
-          return { image: image, mask: mask, maskPath: value.maskPath || null, context: value.context };
+          var captured = false;
+          try {
+            var image = readPng(value.imagePath);
+            var mask = value.maskPath ? readPng(value.maskPath) : null;
+            captured = true;
+            return { image: image, mask: mask, maskPath: value.maskPath || null, context: value.context };
+          } finally {
+            fs.deleteFile(value.imagePath);
+            if (!captured && value.maskPath) fs.deleteFile(value.maskPath);
+          }
         });
       },
+      dispose: function (capture) { if (capture && capture.maskPath) fs.deleteFile(capture.maskPath); },
       apply: function (resultPng, capture) {
         var path = stage(resultPng);
         return invoke('apply', [path, capture.context, capture.maskPath || '']).then(function (value) {
