@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PS AI 画布</title>
+  <link rel="stylesheet" href="css/panel.css">
+</head>
+<body>
+  <main class="panel">
+    <header class="top"><div><span class="eyebrow">PS AI CANVAS</span><h1>画布助手</h1></div><button id="settings-toggle" class="icon" aria-label="设置">⚙</button></header>
+    <div id="document" class="document">正在读取 Photoshop 文档…</div>
+    <nav class="modes" aria-label="操作模式"><button class="mode active" data-mode="edit">选区编辑</button><button class="mode" data-mode="expand">扩图</button><button class="mode" data-mode="generate">生成</button></nav>
+    <section class="work">
+      <label for="prompt">画面描述 <span id="prompt-hint">可留空，自然补全选区</span></label>
+      <textarea id="prompt" rows="4" placeholder="例如：把选区里的杯子换成白色陶瓷花瓶"></textarea>
+      <div id="expand-directions" class="directions hidden">
+        <div class="note">如果已扩大画布并选中透明边缘，直接生成即可。</div>
+        <div class="scale-grid"><label>上 <input id="top" type="number" min="1" max="2" step="0.1" value="1"></label><label>右 <input id="right" type="number" min="1" max="2" step="0.1" value="1.5"></label><label>下 <input id="bottom" type="number" min="1" max="2" step="0.1" value="1"></label><label>左 <input id="left" type="number" min="1" max="2" step="0.1" value="1"></label></div>
+      </div>
+      <details id="advanced"><summary>高级设置</summary><div class="advanced-fields"><label id="whole-row"><input id="whole" type="checkbox"> 整张画面重绘</label><label id="strength-row" class="hidden">修改幅度 <input id="strength" type="range" min="0" max="1" step="0.05" value="0.5"></label><label>候选数量 <select id="count"><option value="1">1 张</option><option value="2">2 张</option><option value="3">3 张</option><option value="4">4 张</option></select></label><label id="size-row" class="hidden">尺寸 <select id="size"><option value="1024*1024">1024 × 1024</option><option value="1280*720">1280 × 720</option><option value="720*1280">720 × 1280</option></select></label><label>随机种子 <input id="seed" type="number" min="0" max="2147483647" placeholder="可留空"></label></div></details>
+      <button id="run" class="primary">生成预览</button>
+      <button id="cancel" class="quiet hidden">停止等待</button>
+      <p id="status" role="status" class="status">结果会先在这里预览，确认后再写入 Photoshop。</p>
+    </section>
+    <section id="previews" class="previews hidden" aria-label="生成结果"></section>
+    <section id="settings" class="settings hidden"><h2>百炼设置</h2><p>北京地域 · API Key 保存在当前 Windows 用户的系统凭据中。</p><label>业务空间 ID <input id="workspace-id" autocomplete="off" placeholder="workspace_xxx"></label><label>API Key <input id="api-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显"></label><button id="save-key" class="secondary">保存设置</button><p id="settings-status" class="status"></p></section>
+  </main>
+  <script src="js/CSInterface.js"></script>
+  <script src="js/host.js"></script>
+  <script src="js/service-client.js"></script>
+  <script src="js/panel.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

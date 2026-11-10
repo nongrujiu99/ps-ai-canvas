@@ -98,6 +98,7 @@ test('result PNG and raw RGBA endpoints return local bytes and dimensions', asyn
     const rawResponse = await fetch(url + '/raw', { headers: { 'X-PSAI-Client': 'ps-ai-plugin', Origin: 'plugin://psai' } });
     assert.equal(rawResponse.headers.get('x-image-width'), '2');
     assert.equal(rawResponse.headers.get('x-image-height'), '3');
+    assert.match(rawResponse.headers.get('access-control-expose-headers') || '', /X-Image-Width/);
     assert.equal((await rawResponse.arrayBuffer()).byteLength, 24);
   }, true, { jobManager: { getResult: () => png } });
 });

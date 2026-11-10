@@ -74,3 +74,11 @@ test('poll understands both result shapes and provider errors never reveal the A
   const failed = withFetch({ code: 'InvalidApiKey', message: 'secret-test-key is invalid' }, 401);
   await assert.rejects(failed.provider.submit({ operation: 'generate', prompt: '花瓶', size: '1024*1024', n: 1 }), (error) => error.code === 'ALIYUN_REQUEST_FAILED' && !error.message.includes('secret-test-key'));
 });
+
+test('download normalizes a JPEG cloud result to PNG for both Photoshop hosts', async () => {
+  const jpeg = await sharp({ create: { width: 4, height: 3, channels: 3, background: '#345678' } }).jpeg().toBuffer();
+  const fetchImpl = async () => new Response(jpeg, { status: 200, headers: { 'content-type': 'image/jpeg' } });
+  const provider = createAliyunProvider({ fetchImpl, endpoint, apiKey: 'test-key' });
+  const png = await provider.download('https://example.oss-cn-beijing.aliyuncs.com/result.jpg');
+  assert.equal((await sharp(png).metadata()).format, 'png');
+});

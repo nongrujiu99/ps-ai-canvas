@@ -40,6 +40,12 @@ test('generation requires a description and candidate count stays between one an
   assert.throws(() => validateJob({ operation: 'generate', prompt: '花瓶', n: 5 }), { code: 'INVALID_COUNT' });
 });
 
+test('generation rejects unsupported dimensions before a paid request', () => {
+  assert.throws(() => validateJob({ operation: 'generate', prompt: '花瓶', size: '4096*4096' }), { code: 'INVALID_SIZE' });
+  assert.throws(() => validateJob({ operation: 'generate', prompt: '花瓶', size: 'abc' }), { code: 'INVALID_SIZE' });
+  assert.equal(validateJob({ operation: 'generate', prompt: '花瓶', size: '1280*720' }).size, '1280*720');
+});
+
 test('invalid operation and missing source fail before a provider can be called', () => {
   assert.throws(() => validateJob({ operation: 'erase', image }), { code: 'INVALID_OPERATION' });
   assert.throws(() => validateJob({ operation: 'editWhole', prompt: '修改颜色' }), { code: 'IMAGE_REQUIRED' });

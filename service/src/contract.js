@@ -65,11 +65,20 @@ function validateJob(input) {
     throw problem('INVALID_SEED', '随机种子无效。');
   }
 
+  let size;
+  if (operation === 'generate') {
+    size = input.size === undefined ? '1024*1024' : input.size;
+    const match = typeof size === 'string' && /^(\d+)\*(\d+)$/.exec(size);
+    if (!['1K', '2K'].includes(size) && (!match || Number(match[1]) * Number(match[2]) < 768 * 768 || Number(match[1]) * Number(match[2]) > 2048 * 2048 || Math.max(Number(match[1]), Number(match[2])) / Math.min(Number(match[1]), Number(match[2])) > 8)) {
+      throw problem('INVALID_SIZE', '生成尺寸超出模型支持范围。');
+    }
+  }
+
   return {
     operation,
     prompt,
     n,
-    ...(operation === 'generate' ? { size: input.size || '1024*1024' } : {}),
+    ...(operation === 'generate' ? { size } : {}),
     ...(operation === 'editMasked' ? { image: input.image, mask: input.mask } : {}),
     ...(operation === 'editWhole' ? { image: input.image, strength: input.strength === undefined ? 0.5 : input.strength } : {}),
     ...(operation === 'expand' ? { image: input.image, ...(scales ? { scales } : { mask: input.mask }) } : {}),

@@ -5,7 +5,7 @@ const sharp = require('sharp');
 const { validateJob, problem } = require('./contract');
 const { decodeCapture, inspectImage, prepareExpansion } = require('./image-inspection');
 
-function createServer({ jobManager, credentialStore, allowedOrigins = [], maxBodyBytes = 100 * 1024 * 1024 }) {
+function createServer({ jobManager, credentialStore, allowedOrigins = [], maxBodyBytes = 160 * 1024 * 1024 }) {
   function send(res, status, body, origin) {
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -114,7 +114,7 @@ function createServer({ jobManager, credentialStore, allowedOrigins = [], maxBod
         res.setHeader('Cache-Control', 'no-store');
         if (result[3]) {
           const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-          res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'X-Image-Width': info.width, 'X-Image-Height': info.height, 'X-Image-Components': 4 });
+          res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Access-Control-Expose-Headers': 'X-Image-Width, X-Image-Height, X-Image-Components', 'X-Image-Width': info.width, 'X-Image-Height': info.height, 'X-Image-Components': 4 });
           res.end(data);
         } else {
           res.writeHead(200, { 'Content-Type': 'image/png' });

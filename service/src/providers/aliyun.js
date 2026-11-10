@@ -124,7 +124,8 @@ function createAliyunProvider({ fetchImpl = fetch, endpoint, apiKey }) {
     if (!response.ok) throw providerError('RESULT_DOWNLOAD', '结果下载失败。');
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.length === 0 || bytes.length > 30 * 1024 * 1024) throw providerError('RESULT_DOWNLOAD', '结果文件无效。');
-    return bytes;
+    try { return await sharp(bytes).png().toBuffer(); }
+    catch { throw providerError('RESULT_DOWNLOAD', '结果图像无法读取。'); }
   }
 
   return { submit, poll, download };

@@ -4,12 +4,14 @@
 
 ## 启动
 
-在本目录执行：
+在源码目录执行：
 
 ```powershell
 npm ci
 npm start
 ```
+
+从 `release/build-service.ps1` 生成的 `dist/service` 包含本机 Windows 依赖，可以直接执行 `node src/main.js`；移到其他架构时先重新运行 `npm ci`。
 
 若 32145 已占用，可以设置 `PSAI_PORT`，同时修改面板的服务端口。服务需要在使用面板时保持运行。首次使用在面板的“设置”中输入北京地域的百炼 API Key 和业务空间 ID。切勿在命令行、截图或工单中粘贴真实 Key。
 
