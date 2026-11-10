@@ -82,3 +82,48 @@ test('text generation opens a new document and removes it if pixel placement fai
   assert.ok(s.calls.includes('delete-layer'));
   assert.ok(s.calls.includes('close-document'));
 });
+
+test('cropped edit result is placed at its original document offset', async () => {
+  const s = scene();
+  s.imaging.putPixels = async (args) => s.calls.push(['pixels-offset', args.targetBounds]);
+  const capture = { context: { documentId: 7, historyId: 9, width: 2, height: 2, operation: 'editMasked', workArea: { left: 1, top: 1, right: 2, bottom: 2 } }, selectionRaw: Uint8Array.from([0, 255, 0, 0]) };
+  await createHost(s).apply({ data: new Uint8Array(4), width: 1, height: 1 }, capture);
+  assert.deepEqual(s.calls.find((call) => Array.isArray(call) && call[0] === 'pixels-offset')[1], { left: 1, top: 1 });
+});
+
+test('accepted slider expansion grows the PSD in the requested directions and masks the original', async () => {
+  const s = scene({ selection: null });
+  s.doc.resizeCanvas = async (width, height, anchor) => { s.calls.push(['resize', width, height, anchor]); s.doc.width = width; s.doc.height = height; };
+  s.constants.AnchorPosition = { TOPLEFT: 'top-left', BOTTOMRIGHT: 'bottom-right' };
+  const capture = { context: { documentId: 7, historyId: 9, width: 2, height: 2, operation: 'expand', scales: { left: 1.5, right: 1.5, top: 1, bottom: 1 } }, selectionRaw: null };
+  const result = await createHost(s).apply({ data: new Uint8Array(4 * 2 * 4), width: 4, height: 2 }, capture);
+  assert.equal(result.layerId, 55);
+  assert.deepEqual(s.calls.filter((call) => Array.isArray(call) && call[0] === 'resize'), [['resize', 3, 2, 'bottom-right'], ['resize', 4, 2, 'top-left']]);
+  assert.deepEqual(s.calls.find((call) => Array.isArray(call) && call[0] === 'create' && call[1] === 1)[2], [255, 0, 0, 255, 255, 0, 0, 255]);
+});
+
+test('large PSD capture sends only the selected work area and records its offset', async () => {
+  const s = scene({ selection: { left: 4200, top: 100, right: 4300, bottom: 200 } });
+  s.doc.width = 5000;
+  s.doc.height = 512;
+  const pixel = (values, components) => ({ width: 1, height: 1, components, getData: async () => Uint8Array.from(values), dispose() {} });
+  s.imaging.getPixels = async (args) => { s.calls.push(['bounds', args.sourceBounds]); return { sourceBounds: { left: 4200, top: 100 }, imageData: pixel([10, 20, 30, 255], 4) }; };
+  s.imaging.getSelection = async () => ({ sourceBounds: { left: 4200, top: 100 }, imageData: pixel([255], 1) });
+  const capture = await createHost(s).capture('editMasked');
+  assert.equal(capture.image.width, 612);
+  assert.equal(capture.image.height, 512);
+  assert.deepEqual(s.calls.find((call) => Array.isArray(call) && call[0] === 'bounds')[1], capture.context.workArea);
+  assert.equal(capture.mask.width, 612);
+  assert.equal(capture.selectionRaw.length, 5000 * 512);
+});
+
+test('capture refuses a document changed between asynchronous pixel reads', async () => {
+  const s = scene();
+  const original = s.imaging.getSelection;
+  s.imaging.getSelection = async (...args) => {
+    const result = await original(...args);
+    s.doc.activeHistoryState = { id: 10 };
+    return result;
+  };
+  await assert.rejects(createHost(s).capture('editMasked'), { code: 'STALE_DOCUMENT' });
+});

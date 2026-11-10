@@ -44,7 +44,7 @@
         if ((n > 1 || state.status === 'preview') && !confirmCost()) throw issue('COST_DECLINED', '已取消额外生成请求。');
       } catch (error) { return Promise.reject(error); }
       change({ mode: mode, status: 'preparing', message: '正在检查 Photoshop 画面…', previews: [], capture: null });
-      var capturePromise = mode === 'generate' ? Promise.resolve(null) : host.capture(whole ? 'editWhole' : mode === 'expand' ? 'expand' : 'editMasked', { scales: input.scales });
+      var capturePromise = mode === 'generate' ? Promise.resolve(null) : host.capture(whole ? 'editWhole' : mode === 'expand' ? 'expand' : 'editMasked', { scales: input.scales || { top: 1, right: 1.5, bottom: 1, left: 1 } });
       return capturePromise.then(function (capture) {
         if (mode === 'generate' || whole) return { capture: capture, operation: mode === 'generate' ? 'generate' : 'editWhole' };
         if (!capture.mask) {

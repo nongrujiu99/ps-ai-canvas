@@ -46,9 +46,12 @@ async function refreshDocument() {
 }
 async function quickRoute() {
   try {
-    const capture = await host.capture('expand');
-    if (!capture.mask) { $('status').textContent = '请先框选画面或新增的透明边缘。'; return; }
+    const ctx = await host.inspect();
+    if (!ctx.selectionBounds) { $('status').textContent = '请先框选画面或新增的透明边缘。'; return; }
+    const large = ctx.width > 4096 || ctx.height > 4096;
+    const capture = await host.capture(large ? 'editMasked' : 'expand');
     const result = await service.inspect({ image: capture.image, mask: capture.mask });
+    if (result.selectionKind === 'transparentBorder' && large) { $('status').textContent = '当前画布超过 4096 像素，暂不支持扩图。'; return; }
     if (result.selectionKind === 'transparentBorder') modeChanged('expand');
     else if (result.selectionKind === 'inside') modeChanged('edit');
     else { $('status').textContent = '选区不明确，请调整选区后再试。'; return; }

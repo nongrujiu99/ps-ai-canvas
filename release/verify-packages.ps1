@@ -17,14 +17,14 @@ if ($uxpManifest.requiredPermissions.network.domains -notcontains 'http://127.0.
 foreach ($file in @('index.html','js\CSInterface.js','js\host.js','js\panel.js','js\service-client.js','js\main.js','jsx\bridge.jsx','jsx\json2.js')) {
   if (-not (Test-Path -LiteralPath (Join-Path $cep $file))) { throw "Missing CEP file: $file" }
 }
-foreach ($file in @('index.html','src\main.js','src\panel.js','src\photoshop-host.js','src\imaging-adapter.js','src\service-client.js')) {
+foreach ($file in @('index.html','src\main.js','src\panel.js','src\photoshop-host.js','src\imaging-adapter.js','src\work-area.js','src\expansion-layout.js','src\service-client.js')) {
   if (-not (Test-Path -LiteralPath (Join-Path $uxp $file))) { throw "Missing UXP file: $file" }
 }
 foreach ($file in @('package.json','package-lock.json','src\main.js','src\server.js','src\client-token.js','scripts\wincred.ps1')) {
   if (-not (Test-Path -LiteralPath (Join-Path $service $file))) { throw "Missing service file: $file" }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $service 'node_modules\sharp'))) { throw 'Packaged service dependencies are missing. Run npm ci in service first.' }
-foreach ($js in @((Join-Path $cep 'js\host.js'), (Join-Path $cep 'js\panel.js'), (Join-Path $cep 'js\service-client.js'), (Join-Path $cep 'js\main.js'), (Join-Path $uxp 'src\main.js'), (Join-Path $uxp 'src\panel.js'), (Join-Path $uxp 'src\photoshop-host.js'), (Join-Path $uxp 'src\service-client.js'), (Join-Path $service 'src\main.js'))) {
+foreach ($js in @((Join-Path $cep 'js\host.js'), (Join-Path $cep 'js\panel.js'), (Join-Path $cep 'js\service-client.js'), (Join-Path $cep 'js\main.js'), (Join-Path $uxp 'src\main.js'), (Join-Path $uxp 'src\panel.js'), (Join-Path $uxp 'src\photoshop-host.js'), (Join-Path $uxp 'src\work-area.js'), (Join-Path $uxp 'src\expansion-layout.js'), (Join-Path $uxp 'src\service-client.js'), (Join-Path $service 'src\main.js'))) {
   & node --check $js
   if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $js" }
 }

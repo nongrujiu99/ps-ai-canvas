@@ -43,15 +43,19 @@
     host.inspect().then(function (ctx) { $('document').textContent = ctx.width + ' × ' + ctx.height + ' px  ·  RGB 8 位' + (ctx.selectionBounds ? '  ·  已有选区' : '  ·  无选区'); }, function (error) { $('document').textContent = error.message; });
   }
   function quickRoute() {
-    host.capture('expand', {}).then(function (capture) {
-      if (!capture.mask) { $('status').textContent = '请先框选画面或新增的透明边缘。'; return; }
-      service.inspect({ image: capture.image, mask: capture.mask }).then(function (result) {
-        host.dispose(capture);
-        if (result.selectionKind === 'transparentBorder') modeChanged('expand');
-        else if (result.selectionKind === 'inside') modeChanged('edit');
-        else { $('status').textContent = '选区不明确，请调整选区后再试。'; return; }
-        $('status').textContent = '已按选区识别操作。确认描述后点击“生成预览”。';
-      }, function (error) { host.dispose(capture); showError(error); });
+    host.inspect().then(function (ctx) {
+      if (!ctx.selectionBounds) { $('status').textContent = '请先框选画面或新增的透明边缘。'; return; }
+      var large = ctx.width > 4096 || ctx.height > 4096;
+      host.capture(large ? 'editMasked' : 'expand', {}).then(function (capture) {
+        service.inspect({ image: capture.image, mask: capture.mask }).then(function (result) {
+          host.dispose(capture);
+          if (result.selectionKind === 'transparentBorder' && large) { $('status').textContent = '当前画布超过 4096 像素，暂不支持扩图。'; return; }
+          if (result.selectionKind === 'transparentBorder') modeChanged('expand');
+          else if (result.selectionKind === 'inside') modeChanged('edit');
+          else { $('status').textContent = '选区不明确，请调整选区后再试。'; return; }
+          $('status').textContent = '已按选区识别操作。确认描述后点击“生成预览”。';
+        }, function (error) { host.dispose(capture); showError(error); });
+      }, showError);
     }, showError);
   }
 

@@ -46,7 +46,7 @@
       if (state.capture && host.dispose) host.dispose(state.capture);
       change({ mode: mode, status: 'preparing', message: '正在检查 Photoshop 画面…', previews: [], capture: null, jobId: null });
       var activeCapture = null;
-      var capturePromise = mode === 'generate' ? Promise.resolve(null) : host.capture(whole ? 'editWhole' : mode === 'expand' ? 'expand' : 'editMasked', { scales: input.scales });
+      var capturePromise = mode === 'generate' ? Promise.resolve(null) : host.capture(whole ? 'editWhole' : mode === 'expand' ? 'expand' : 'editMasked', { scales: input.scales || { top: 1, right: 1.5, bottom: 1, left: 1 } });
       return capturePromise.then(function (capture) {
         activeCapture = capture;
         if (mode === 'generate' || whole) return { capture: capture, operation: mode === 'generate' ? 'generate' : 'editWhole' };

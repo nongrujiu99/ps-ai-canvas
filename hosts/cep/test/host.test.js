@@ -64,3 +64,15 @@ test('abandoned capture releases its temporary mask', () => {
   host.dispose({ maskPath: 'mask.png' });
   assert.deepEqual(removed, ['mask.png']);
 });
+
+test('cropped capture sends a work mask and keeps the full selection mask for application', async () => {
+  const removed = [];
+  const cs = { evalScript: (_script, done) => done(JSON.stringify({ ok: true, value: { imagePath: 'image.png', maskPath: 'work-mask.png', applyMaskPath: 'full-mask.png', context: { workArea: { left: 100, top: 100, right: 612, bottom: 612 } } } })) };
+  const fs = { readFile: () => ({ err: 0, data: 'cG5n' }), deleteFile: (name) => { removed.push(name); } };
+  const host = createHost({ cs, fs, encoding: { Base64: 1 } });
+  const capture = await host.capture('editMasked');
+  assert.equal(capture.maskPath, 'full-mask.png');
+  assert.equal(capture.workMaskPath, 'work-mask.png');
+  host.dispose(capture);
+  assert.deepEqual(removed, ['image.png', 'full-mask.png', 'work-mask.png']);
+});

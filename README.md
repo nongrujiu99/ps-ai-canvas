@@ -5,7 +5,7 @@
 ## 已实现
 
 - 选区编辑：空描述自然补全，有描述时按指令局部重绘；整图重绘放在高级设置。
-- 扩图：四向比例，或先手工扩大画布并框选规则透明边缘后自动识别。
+- 扩图：四向比例，或先手工扩大画布并框选规则透明边缘后自动识别；输出尺寸准确时扩展当前 PSD 并以新图层显示新增边缘。
 - 文生图：输入描述，默认一张；最多四张候选，预览后才应用。
 - 本地服务：校验图像、提交异步任务、轮询、下载并转为 PNG；API Key 存入 Windows 凭据管理器。
 - 旧版脚本与新版命令提供快捷入口。快捷入口负责按选区分流到面板，仍需用户在面板确认并生成。
@@ -21,6 +21,6 @@
 
 ## 现阶段边界
 
-当前机器没有 Photoshop，也没有百炼 API Key。CEP/UXP 在真实 Photoshop 的加载、羽化蒙版和回填位置未验证；[兼容性表](docs/compatibility-matrix.md)如实标记。当前仍上传整幅画布，大于 4096 像素的文档即使只编辑小选区也暂不支持。四向滑杆扩图生成的更大结果会打开新文档，暂未自动扩展原 PSD 并精确对齐原图。手工扩画布的结果只有在输出尺寸与画布一致时才作为新图层应用，否则也会另开文档。原生画布右键菜单没有接入；快捷入口位于脚本/插件命令菜单。
+当前机器没有 Photoshop，也没有百炼 API Key。CEP/UXP 在真实 Photoshop 的加载、羽化蒙版和回填位置未验证；[兼容性表](docs/compatibility-matrix.md)如实标记。大图的局部编辑会裁出最多 4096 像素的工作区域；整图重绘和扩图的输入画布仍需在 512–4096 像素范围内。四向滑杆扩图只有在输出尺寸与请求比例精确一致时才扩展原 PSD，尺寸不匹配则另开文档。手工扩画布的结果也只有在输出尺寸与画布一致时才作为新图层应用。原生画布右键菜单没有接入；快捷入口位于脚本/插件命令菜单。
 
 模型接口依据：[阿里云图像编辑 API](https://help.aliyun.com/zh/model-studio/wanx-image-edit-api-reference)、[阿里云 Wan2.7 图像 API](https://help.aliyun.com/zh/model-studio/wan-image-generation-and-editing-api-reference)。Photoshop 接口依据：[Adobe CEP](https://github.com/Adobe-CEP/CEP-Resources)、[Adobe UXP Imaging API](https://developer.adobe.com/photoshop/uxp/ps_reference/media/imaging/)。

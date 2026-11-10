@@ -57,21 +57,23 @@
             var image = readPng(value.imagePath);
             var mask = value.maskPath ? readPng(value.maskPath) : null;
             captured = true;
-            return { image: image, mask: mask, maskPath: value.maskPath || null, context: value.context };
+            return { image: image, mask: mask, maskPath: value.applyMaskPath || value.maskPath || null, workMaskPath: value.applyMaskPath && value.maskPath !== value.applyMaskPath ? value.maskPath : null, context: value.context };
           } finally {
             fs.deleteFile(value.imagePath);
             if (!captured && value.maskPath) fs.deleteFile(value.maskPath);
+            if (!captured && value.applyMaskPath && value.applyMaskPath !== value.maskPath) fs.deleteFile(value.applyMaskPath);
           }
         });
       },
-      dispose: function (capture) { if (capture && capture.maskPath) fs.deleteFile(capture.maskPath); },
+      dispose: function (capture) { if (capture && capture.maskPath) fs.deleteFile(capture.maskPath); if (capture && capture.workMaskPath && capture.workMaskPath !== capture.maskPath) fs.deleteFile(capture.workMaskPath); },
       apply: function (resultPng, capture) {
         var path = stage(resultPng);
         return invoke('apply', [path, capture.context, capture.maskPath || '']).then(function (value) {
           fs.deleteFile(path);
           if (capture.maskPath) fs.deleteFile(capture.maskPath);
+          if (capture.workMaskPath) fs.deleteFile(capture.workMaskPath);
           return value;
-        }, function (error) { fs.deleteFile(path); if (capture.maskPath) fs.deleteFile(capture.maskPath); throw error; });
+        }, function (error) { fs.deleteFile(path); if (capture.maskPath) fs.deleteFile(capture.maskPath); if (capture.workMaskPath) fs.deleteFile(capture.workMaskPath); throw error; });
       },
       openSeparate: function (resultPng) {
         var path = stage(resultPng);
