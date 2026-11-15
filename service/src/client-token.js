@@ -7,7 +7,7 @@ const path = require('node:path');
 
 function tokenPath() {
   const home = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-  return path.join(home, 'PSAI Canvas', 'client-token');
+  return path.join(home, 'Studio AI Image', 'client-token');
 }
 
 function loadClientToken(file = tokenPath()) {

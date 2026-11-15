@@ -3,33 +3,186 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PS AI 画布</title>
+  <title>AI 图像工坊</title>
   <link rel="stylesheet" href="css/panel.css">
 </head>
 <body>
   <main class="panel">
-    <header class="top"><div><span class="eyebrow">PS AI CANVAS</span><h1>PS AI 画布</h1></div><button id="settings-toggle" class="icon" aria-label="设置">⚙</button></header>
-    <div id="document" class="document">正在读取 Photoshop 文档…</div>
-    <nav class="modes" aria-label="操作模式"><button class="mode active" data-mode="edit">选区编辑</button><button class="mode" data-mode="expand">扩图</button><button class="mode" data-mode="generate">生成</button></nav>
-    <section class="work">
-      <label for="prompt">画面描述 <span id="prompt-hint">可留空，自然补全选区</span></label>
-      <textarea id="prompt" rows="4" placeholder="例如：把选区里的杯子换成白色陶瓷花瓶"></textarea>
-      <div id="expand-directions" class="directions hidden">
-        <div class="note">如果已扩大画布并选中透明边缘，直接生成即可。</div>
-        <div class="scale-grid"><label>上 <input id="top" type="number" min="1" max="2" step="0.1" value="1"></label><label>右 <input id="right" type="number" min="1" max="2" step="0.1" value="1.5"></label><label>下 <input id="bottom" type="number" min="1" max="2" step="0.1" value="1"></label><label>左 <input id="left" type="number" min="1" max="2" step="0.1" value="1"></label></div>
+
+    <!-- 页头：标记 + 标题 + 文档状态。文档尺寸是上下文，退成副标，不再单独占一行。 -->
+    <header class="top">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <h1>AI 图像工坊</h1>
+          <div id="document" class="document">正在读取 Photoshop 文档…</div>
+        </div>
       </div>
-      <details id="advanced"><summary>高级设置</summary><div class="advanced-fields"><label id="whole-row"><input id="whole" type="checkbox"> 整张画面重绘</label><label id="strength-row" class="hidden">修改幅度 <input id="strength" type="range" min="0" max="1" step="0.05" value="0.5"></label><label>候选数量 <select id="count"><option value="1">1 张</option><option value="2">2 张</option><option value="3">3 张</option><option value="4">4 张</option></select></label><label id="size-row" class="hidden">尺寸 <select id="size"><option value="1024*1024">1024 × 1024</option><option value="1280*720">1280 × 720</option><option value="720*1280">720 × 1280</option></select></label><label>随机种子 <input id="seed" type="number" min="0" max="2147483647" placeholder="可留空"></label></div></details>
-      <button id="run" class="primary">生成预览</button>
-      <button id="cancel" class="quiet hidden">停止等待</button>
-      <p id="status" role="status" class="status">结果会先在这里预览，确认后再写入 Photoshop。</p>
+      <button id="settings-toggle" class="icon" aria-label="设置" title="设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 6.9l2.6 1.5M17.2 15.6l2.6 1.5M19.8 6.9l-2.6 1.5M6.8 15.6l-2.6 1.5"/></svg>
+      </button>
+    </header>
+
+    <button id="provider" class="provider" type="button" title="点击查看或修改生成渠道">
+      <span id="provider-label" class="provider-label">本地服务</span>
+      <span id="provider-chip" class="provider-chip">正在检查…</span>
+      <span class="provider-go" aria-hidden="true">›</span>
+    </button>
+
+    <nav class="modes" aria-label="操作模式">
+      <button class="mode active" data-mode="edit">选区编辑</button>
+      <button class="mode" data-mode="expand">扩图</button>
+      <button class="mode" data-mode="generate">生成</button>
+    </nav>
+
+    <section class="work">
+      <div class="field-head">
+        <label for="prompt">画面描述</label>
+        <span id="prompt-hint" class="hint-chip">可留空</span>
+      </div>
+      <textarea id="prompt" rows="3" placeholder="例如：把选区里的杯子换成白色陶瓷花瓶"></textarea>
+
+      <div id="expand-directions" class="directions hidden">
+        <div class="note" id="scale-note">倍率按画布透明边自动推算（1 = 不扩）。<br>描述只写材质和光线，别列物体。</div>
+        <div id="scale-grid" class="scale-grid">
+          <label for="top">上 <input id="top" type="number" min="1" max="2" step="0.01" value="1"></label>
+          <label for="right">右 <input id="right" type="number" min="1" max="2" step="0.01" value="1"></label>
+          <label for="bottom">下 <input id="bottom" type="number" min="1" max="2" step="0.01" value="1"></label>
+          <label for="left">左 <input id="left" type="number" min="1" max="2" step="0.01" value="1"></label>
+        </div>
+      </div>
+
+      <div class="param-row">
+        <label for="count"><span>候选数量</span><select id="count"><option value="1">1 张</option><option value="2">2 张</option><option value="3">3 张</option><option value="4">4 张</option></select></label>
+        <label for="seed"><span>随机种子</span><input id="seed" type="number" min="0" max="2147483647" placeholder="留空" title="留空为随机"></label>
+        <label id="size-row" class="wide hidden" for="size"><span>输出尺寸</span><select id="size"><optgroup label="方形 1:1"><option value="1024*1024">1024 × 1024</option><option value="2048*2048">2048 × 2048</option></optgroup><optgroup label="横 4:3"><option value="1024*768">1024 × 768</option><option value="2048*1536">2048 × 1536</option></optgroup><optgroup label="竖 3:4"><option value="768*1024">768 × 1024</option><option value="1536*2048">1536 × 2048</option></optgroup><optgroup label="宽银幕 16:9"><option value="1024*576">1024 × 576</option><option value="2048*1152">2048 × 1152</option></optgroup><optgroup label="竖屏 9:16"><option value="576*1024">576 × 1024</option><option value="1152*2048">1152 × 2048</option></optgroup><optgroup label="照片 3:2"><option value="1024*683">1024 × 683</option><option value="2048*1365">2048 × 1365</option></optgroup></select></label>
+      </div>
+      <details id="advanced">
+        <summary>更多选项</summary>
+        <div class="advanced-fields">
+          <label id="whole-row" for="whole"><input id="whole" type="checkbox"><span>整张画面重绘</span></label>
+          <label id="strength-row" class="hidden" for="strength"><span>修改幅度</span><input id="strength" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+        </div>
+      </details>
+
+      <div class="actions">
+        <button id="run" class="primary">生成预览</button>
+        <button id="cancel" class="quiet hidden">停止</button>
+      </div>
+      <p id="status" role="status" class="status"></p>
     </section>
+
     <section id="previews" class="previews hidden" aria-label="生成结果"></section>
-    <section id="settings" class="settings hidden"><div class="settings-head"><h2>百炼设置</h2><button id="settings-close" class="icon" aria-label="返回">×</button></div><p>先输入本地服务窗口显示的连接码。北京地域 API Key 保存在当前 Windows 用户的系统凭据中。</p><label>本地连接码 <input id="client-token" type="password" autocomplete="off" placeholder="服务启动窗口显示"></label><button id="save-token" class="secondary">连接本地服务</button><p id="settings-status" class="status"></p><label>业务空间 ID <input id="workspace-id" autocomplete="off" placeholder="workspace_xxx"></label><label>API Key <input id="api-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显"></label><button id="save-key" class="secondary">保存百炼设置</button></section>
+
+    <!-- 结果预览：点候选图（或右上角放大键）进入。两层图叠放 + 一条竖线滑块，
+         左边原图、右边生成后；纯生成没有底稿时退化成单图大图。覆盖层的定位方式
+         与设置页一致（position:fixed 四边 0），同一时间只会开一层。 -->
+    <section id="viewer" class="viewer hidden" aria-label="结果预览">
+      <div class="settings-head">
+        <h2 id="viewer-title">结果预览</h2>
+        <div class="viewer-tools">
+          <button id="viewer-compare" class="mini" type="button">只看结果</button>
+          <button id="viewer-close" class="icon" aria-label="关闭预览">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="compare" class="compare hidden">
+        <img id="compare-after" class="compare-after" alt="生成结果">
+        <div class="compare-reveal"><img id="compare-before" class="compare-before" alt="原图"></div>
+        <span class="compare-tag compare-tag-before">原图</span>
+        <span class="compare-tag compare-tag-after">生成后</span>
+        <span class="compare-handle" aria-hidden="true"></span>
+      </div>
+      <img id="viewer-photo" class="viewer-photo hidden" alt="生成结果">
+      <div id="compare-bar" class="compare-bar hidden">
+        <input id="compare-range" class="compare-range" type="range" min="0" max="100" step="1" value="50" aria-label="对比位置">
+      </div>
+      <p id="viewer-note" class="hint viewer-note"></p>
+    </section>
+
+    <section id="settings" class="settings hidden">
+      <div class="settings-head">
+        <h2>设置</h2>
+        <button id="settings-close" class="icon" aria-label="返回">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>生成渠道</h3>
+          <span id="channel-lock" class="lock hidden">由配置文件锁定</span>
+        </div>
+        <div class="segmented" data-count="3" role="group" aria-label="生成渠道">
+          <button id="channel-aliyun-tab" class="seg active" data-channel="aliyun">百炼</button>
+          <button id="channel-openai-tab" class="seg" data-channel="openai">第三方 API</button>
+          <button id="channel-bfl-tab" class="seg" data-channel="bfl">FLUX</button>
+        </div>
+        <div id="channel-aliyun" class="channel-body">
+          <label for="workspace-id">业务空间 ID<input id="workspace-id" autocomplete="off" placeholder="workspace_xxx"></label>
+          <label for="api-key">API Key<input id="api-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显"></label>
+        </div>
+        <div id="channel-openai" class="channel-body hidden">
+          <label for="base-url">服务地址<input id="base-url" autocomplete="off" placeholder="https://xxx.com/v1"></label>
+          <label for="openai-key">API Key<input id="openai-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显"></label>
+          <label for="openai-model">模型<select id="openai-model"></select></label>
+          <label id="openai-model-custom-wrap" class="hidden" for="openai-model-custom">自定义模型名<input id="openai-model-custom" autocomplete="off" placeholder="渠道文档里的模型 ID"></label>
+          <label for="openai-size-mode">尺寸模式<select id="openai-size-mode"><option value="pixels">像素尺寸（gpt-image 系）</option><option value="tier">档位 1K/2K/4K（Gemini 系）</option></select></label>
+          <label for="channel-name">显示名称 · 可留空<input id="channel-name" autocomplete="off" placeholder="默认显示「第三方 API」"></label>
+        </div>
+        <div id="channel-bfl" class="channel-body hidden">
+          <label for="bfl-key">API Key<input id="bfl-key" type="password" autocomplete="off" placeholder="bfl_ 开头，输入后保存，不在面板回显"></label>
+          <label for="bfl-model">文生图模型<select id="bfl-model"></select></label>
+          <label id="bfl-model-custom-wrap" class="hidden" for="bfl-model-custom">自定义模型名<input id="bfl-model-custom" autocomplete="off" placeholder="BFL 文档里的模型 ID"></label>
+          <label for="bfl-name">显示名称 · 可留空<input id="bfl-name" autocomplete="off" placeholder="默认显示「FLUX」"></label>
+          <label for="bfl-base-url">服务地址 · 留空用官方<input id="bfl-base-url" autocomplete="off" placeholder="https://api.bfl.ai"></label>
+          <p class="hint">扩图和选区编辑不需要选模型：BFL 各有一个专用端点，模型只管文生图。</p>
+        </div>
+        <div class="channel-actions">
+          <button id="save-channel" class="primary">保存</button>
+          <button id="test-channel" class="secondary">测试连通</button>
+        </div>
+        <p id="channel-status" class="status"></p>
+        <p id="test-status" class="status"></p>
+        <p class="hint">API Key 存在 Windows 凭据管理器，不写进配置文件。</p>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>本地服务</h3>
+          <button id="start-service" class="mini">启动服务</button>
+        </div>
+        <p id="settings-status" class="status"></p>
+        <details class="manual-token">
+          <summary>服务起不来？手填连接码</summary>
+          <label for="client-token">连接码<input id="client-token" type="password" autocomplete="off" placeholder="服务启动窗口显示"></label>
+          <button id="save-token" class="secondary">使用此连接码</button>
+        </details>
+      </div>
+      <div class="group">
+        <div class="group-head">
+          <h3>外观</h3>
+        </div>
+        <div id="theme-switch" class="segmented" data-count="4" role="group" aria-label="界面主题">
+          <button class="seg active" data-theme-value="auto">自动</button>
+          <button class="seg" data-theme-value="dark">深色</button>
+          <button class="seg" data-theme-value="ps">PS 灰</button>
+          <button class="seg" data-theme-value="light">浅色</button>
+        </div>
+        <p class="hint">自动跟随系统外观。PS 灰与 Photoshop 面板同色，并排时看不出拼接。</p>
+      </div>
+    </section>
+
   </main>
+  <script src="js/theme.js"></script>
   <script src="js/CSInterface.js"></script>
   <script src="js/host.js"></script>
   <script src="js/service-client.js"></script>
   <script src="js/panel.js"></script>
+  <script src="js/channel-view.js"></script>
+  <script src="js/compare-view.js"></script>
+  <script src="js/local-service.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

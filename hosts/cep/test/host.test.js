@@ -4,7 +4,7 @@ const { createHost, scriptCall } = require('../js/host');
 
 test('script arguments preserve quoted Windows paths without executing code', () => {
   const call = scriptCall('apply', ['C:\\Temp\\a"b.png', { documentId: 7 }]);
-  assert.equal(call, 'PSAI.apply("C:\\\\Temp\\\\a\\"b.png",{"documentId":7})');
+  assert.equal(call, 'Studio.apply("C:\\\\Temp\\\\a\\"b.png",{"documentId":7})');
 });
 
 test('adapter decodes host JSON and reports ExtendScript failures', async () => {
@@ -25,7 +25,8 @@ test('capture reads temporary PNGs as Base64 and preserves the document snapshot
   assert.equal(capture.context.documentId, 10);
   assert.equal(capture.image.dataUrl, 'data:image/png;base64,aW1hZ2U=');
   assert.equal(capture.mask.dataUrl, 'data:image/png;base64,bWFzaw==');
-  assert.match(scripts[0], /^PSAI\.capture\(/);
+  // 首次调用会先加载 bridge（$.evalFile），业务调用是最后一条脚本
+  assert.match(scripts[scripts.length - 1], /^Studio\.capture\(/);
 });
 
 test('accepted result is staged as PNG and applied by path', async () => {
@@ -37,7 +38,8 @@ test('accepted result is staged as PNG and applied by path', async () => {
   const result = await host.apply('data:image/png;base64,cG5n', { context: { documentId: 10 } });
   assert.equal(written.data, 'cG5n');
   assert.equal(result.layerId, 3);
-  assert.match(scripts[0], /^PSAI\.apply\(/);
+  // 首次调用会先加载 bridge（$.evalFile），业务调用是最后一条脚本
+  assert.match(scripts[scripts.length - 1], /^Studio\.apply\(/);
 });
 
 test('a rejected application removes staged result and captured mask files', async () => {

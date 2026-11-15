@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PS AI 画布 · 重构原型</title>
+<style>
+:root{color-scheme:dark;--bg:#202124;--surface:#282b31;--surface-2:#2b2e34;--border:#3b414b;--border-strong:#4b515d;--text:#f0f1f3;--text-dim:#b6c0ce;--text-mute:#9aa5b4;--accent:#98b9f5;--accent-text:#142034}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,"Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:13px;min-width:280px}
+.panel{padding:14px 16px 20px;max-width:520px;margin:auto}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.eyebrow{color:#98a8bd;font-size:10px;letter-spacing:.15em;font-weight:700}
+h1{font-size:17px;line-height:1.2;margin:3px 0 0;font-weight:600}
+.icon{border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-2);color:#dce0e6;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:17px}
+.icon:hover{background:#353941}
+.docbar{display:flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-dim);margin-bottom:14px;font-size:12px}
+.docbar .dot{width:8px;height:8px;border-radius:50%;background:#639922;flex:0 0 auto}
+.docbar .sep{color:#5f6570}
+.field{margin-bottom:14px}
+.field>label{display:block;font-weight:600;color:#d8dce3;margin-bottom:7px}
+textarea{width:100%;resize:vertical;min-height:88px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:#f5f6f8;padding:11px;line-height:1.5;font:inherit}
+textarea:focus{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+textarea::placeholder{color:#87909c}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--surface-2);border-radius:9px;padding:4px;margin-bottom:14px}
+.mode{border:0;border-radius:6px;background:transparent;color:#b7bdc8;padding:10px 3px;cursor:pointer;font-size:13px;min-height:38px}
+.mode:hover{color:#e6e9ee}
+.mode.active{background:#484d58;color:white;font-weight:600}
+.mode:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.panel-note{font-size:12px;color:var(--text-mute);line-height:1.5;margin:-6px 0 12px}
+.scale-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:14px}
+.scale-grid .cell{text-align:center}
+.scale-grid .cell label{display:block;font-size:12px;color:#aeb9c9;margin-bottom:5px}
+.scale-grid input{display:block;width:100%;padding:8px 4px;text-align:center;background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;color:white;font:inherit}
+.scale-grid input:focus{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+details{margin:0 0 14px;border-top:1px solid #3c414a;padding-top:10px}
+summary{cursor:pointer;color:#bfc8d5;font-size:12px;outline:none}
+summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.advanced-fields{padding-top:12px;display:grid;gap:11px}
+.advanced-fields .row{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#d8dce3}
+.advanced-fields .row select,.advanced-fields .row input[type=number]{background:var(--surface);border:1px solid var(--border-strong);border-radius:5px;color:white;padding:5px 6px;font:inherit}
+.advanced-fields .row input[type=range]{width:120px}
+.advanced-fields .check{display:flex;align-items:center;gap:7px}
+.primary{width:100%;border:0;border-radius:8px;padding:12px;font-weight:700;cursor:pointer;background:var(--accent);color:var(--accent-text);font-size:13px;display:flex;align-items:center;justify-content:center;gap:9px}
+.primary:hover{background:#afcaff}
+.primary:disabled{opacity:.45;cursor:default}
+.primary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.spinner{width:14px;height:14px;border:2px solid rgba(20,32,52,.3);border-top-color:#142034;border-radius:50%;animation:spin .8s linear infinite;flex:0 0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+.status{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--text-mute);min-height:18px}
+.status.error{color:#f09595}
+.status.ok{color:#97c459}
+.status.busy{color:#a8c8f8;font-weight:600;display:flex;align-items:center;gap:8px}
+.status.busy .spinner{border-color:rgba(168,200,248,.3);border-top-color:#a8c8f8}
+.previews{margin-top:16px;display:flex;flex-direction:column;gap:14px}
+.preview{background:var(--surface);border:1px solid #454b56;border-radius:10px;overflow:hidden}
+.preview img{display:block;width:100%;max-height:360px;object-fit:contain;background:#17191d}
+.preview .bar{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;gap:10px}
+.preview .tag{font-size:12px;color:var(--text-mute)}
+.preview button{border:0;background:#374252;color:#eaf0fb;padding:9px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap}
+.preview button:hover{background:#435064}
+.preview button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.settings{position:fixed;inset:0;background:var(--bg);padding:20px;overflow:auto;z-index:2}
+.settings h2{font-size:15px;margin:0}
+.settings p{font-size:12px;color:var(--text-mute);line-height:1.5}
+.settings label{display:block;font-weight:600;color:#d8dce3;margin:14px 0 6px;font-size:12px}
+.settings input{display:block;width:100%;padding:10px;background:var(--surface);border:1px solid var(--border-strong);border-radius:7px;color:white;font:inherit}
+.settings input:focus{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+.secondary{display:block;width:100%;border:0;border-radius:8px;padding:11px;margin-top:10px;background:#444d5b;color:#f4f6fa;font-weight:600;cursor:pointer;font-size:12px}
+.secondary:hover{background:#515c6c}
+.settings-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<main class="panel">
+  <header class="top">
+    <div><span class="eyebrow">PS AI CANVAS</span><h1>PS AI 画布</h1></div>
+    <button id="settings-toggle" class="icon" aria-label="设置">⚙</button>
+  </header>
+
+  <div id="docbar" class="docbar"><span class="dot"></span><span id="doc-text">1920 × 1280 · RGB 8 位</span><span class="sep">·</span><span id="sel-text">已有选区</span></div>
+
+  <div class="field">
+    <label for="prompt">画面描述</label>
+    <textarea id="prompt" rows="4" placeholder="例如：把选区里的杯子换成白色陶瓷花瓶"></textarea>
+  </div>
+
+  <nav class="modes" aria-label="操作类型">
+    <button class="mode active" data-mode="edit">选区编辑</button>
+    <button class="mode" data-mode="expand">扩图</button>
+    <button class="mode" data-mode="generate">文生图</button>
+  </nav>
+
+  <div id="expand-panel" class="hidden">
+    <p class="panel-note">留空则自动识别透明边缘；手动填倍率（1 = 不扩，1.4 = 扩到 1.4 倍）。</p>
+    <div class="scale-grid">
+      <div class="cell"><label for="top">上</label><input id="top" type="number" min="1" max="2" step="0.1" value="1"></div>
+      <div class="cell"><label for="right">右</label><input id="right" type="number" min="1" max="2" step="0.1" value="1.5"></div>
+      <div class="cell"><label for="bottom">下</label><input id="bottom" type="number" min="1" max="2" step="0.1" value="1"></div>
+      <div class="cell"><label for="left">左</label><input id="left" type="number" min="1" max="2" step="0.1" value="1"></div>
+    </div>
+  </div>
+
+  <details id="advanced">
+    <summary>高级设置</summary>
+    <div class="advanced-fields">
+      <div class="row"><span class="check"><input id="whole" type="checkbox"> 整张画面重绘</span><span id="strength-cell" class="hidden">幅度 <input id="strength" type="range" min="0" max="1" step="0.05" value="0.5"></span></div>
+      <div class="row"><span>候选数量</span><select id="count"><option value="1">1 张</option><option value="2">2 张</option><option value="3">3 张</option><option value="4">4 张</option></select></div>
+      <div class="row" id="size-row"><span>尺寸</span><select id="size"><option value="1024*1024">1024 × 1024</option><option value="1280*720">1280 × 720</option><option value="720*1280">720 × 1280</option></select></div>
+      <div class="row"><span>随机种子</span><input id="seed" type="number" min="0" max="2147483647" placeholder="可留空" style="width:120px"></div>
+    </div>
+  </details>
+
+  <button id="run" class="primary">生成</button>
+  <p id="status" role="status" class="status"></p>
+
+  <section id="previews" class="previews hidden" aria-label="生成结果"></section>
+</main>
+
+<div id="settings" class="settings hidden">
+  <div class="settings-head"><h2>百炼设置</h2><button id="settings-close" class="icon" aria-label="返回">×</button></div>
+  <p>先输入本地服务窗口显示的连接码。北京地域 API Key 保存在当前 Windows 用户的系统凭据中。</p>
+  <label for="client-token">本地连接码</label>
+  <input id="client-token" type="password" autocomplete="off" placeholder="服务启动窗口显示">
+  <button id="save-token" class="secondary">连接本地服务</button>
+  <p id="settings-status" class="status"></p>
+  <label for="workspace-id">业务空间 ID</label>
+  <input id="workspace-id" autocomplete="off" placeholder="workspace_xxx">
+  <label for="api-key">API Key</label>
+  <input id="api-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显">
+  <button id="save-key" class="secondary">保存百炼设置</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var mode = 'edit';
+  var mockImage = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#314e79"/><stop offset="1" stop-color="#d5b9a6"/></linearGradient></defs><rect width="640" height="640" fill="url(#sky)"/><circle cx="446" cy="190" r="68" fill="#fff0ce"/><path d="M0 380 Q160 330 330 395 T640 360 V640 H0" fill="#658891"/><path d="M0 460 Q200 404 400 462 T640 428 V640 H0" fill="#315467"/><path d="M0 557 Q175 514 340 557 T640 522 V640 H0" fill="#183648"/></svg>');
+
+  function setStatus(msg, cls) { var s = $('status'); s.textContent = msg || ''; s.className = 'status' + (cls ? ' ' + cls : ''); }
+
+  function setBusy(busy) {
+    var run = $('run');
+    if (busy) {
+      run.disabled = true;
+      run.innerHTML = '<span class="spinner"></span>生成中…';
+      setStatus('正在生成，通常需要几秒到几十秒…', 'busy');
+      $('status').prepend(Object.assign(document.createElement('span'), { className: 'spinner' }));
+    } else {
+      run.disabled = false;
+      run.innerHTML = '生成';
+    }
+  }
+
+  function setMode(next) {
+    mode = next;
+    var modes = document.querySelectorAll('.mode');
+    for (var i = 0; i < modes.length; i++) modes[i].classList.toggle('active', modes[i].getAttribute('data-mode') === next);
+    $('expand-panel').classList.toggle('hidden', next !== 'expand');
+    $('strength-cell').classList.toggle('hidden', !(next === 'edit' && $('whole').checked));
+    $('size-row').classList.toggle('hidden', next !== 'generate');
+    $('prompt').placeholder = next === 'expand' ? '例如：向右延伸海边的日落天空（可留空）' : next === 'generate' ? '例如：极简风格的陶瓷花瓶，柔和自然光' : '例如：把选区里的杯子换成白色陶瓷花瓶';
+    $('previews').classList.add('hidden');
+    $('previews').innerHTML = '';
+    setStatus('');
+  }
+
+  var modes = document.querySelectorAll('.mode');
+  for (var i = 0; i < modes.length; i++) modes[i].addEventListener('click', function () { setMode(this.getAttribute('data-mode')); });
+  $('whole').addEventListener('change', function () { setMode(mode); });
+  $('settings-toggle').addEventListener('click', function () { $('settings').classList.toggle('hidden'); });
+  $('settings-close').addEventListener('click', function () { $('settings').classList.add('hidden'); });
+  $('save-token').addEventListener('click', function () { $('settings-status').textContent = '演示页面不会保存连接码。'; $('client-token').value = ''; });
+  $('save-key').addEventListener('click', function () { $('settings-status').textContent = '演示页面不会保存或发送密钥。'; $('api-key').value = ''; });
+
+  $('run').addEventListener('click', function () {
+    var prompt = $('prompt').value.trim();
+    if ((mode === 'generate' || (mode === 'edit' && $('whole').checked)) && !prompt) { setStatus('请先输入画面描述。', 'error'); return; }
+    setBusy(true);
+    setTimeout(function () {
+      setBusy(false);
+      $('previews').innerHTML = '';
+      var count = Number($('count').value);
+      for (var j = 0; j < count; j++) {
+        (function (idx) {
+          var card = document.createElement('div'); card.className = 'preview';
+          var img = document.createElement('img'); img.src = mockImage; img.alt = '候选图 ' + (idx + 1);
+          var bar = document.createElement('div'); bar.className = 'bar';
+          var tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = '候选 ' + (idx + 1) + ' / ' + count;
+          var button = document.createElement('button'); button.textContent = '应用';
+          button.addEventListener('click', function () { setStatus('已应用到新图层。', 'ok'); });
+          bar.appendChild(tag); bar.appendChild(button);
+          card.appendChild(img); card.appendChild(bar); $('previews').appendChild(card);
+        })(j);
+      }
+      $('previews').classList.remove('hidden');
+      setStatus('选择满意的结果后应用。');
+    }, 1500);
+  });
+
+  setMode('edit');
+}());
+</script>
+</body>
+</html>

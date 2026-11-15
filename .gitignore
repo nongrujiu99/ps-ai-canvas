@@ -5,4 +5,12 @@ dist/
 coverage/
 *.log
 *.tmp
+.tmp-verify/
 .env
+# 第三方图像渠道的 Key，只留在本机
+openai.env
+# 本地 Agent 工作记录（记忆/截图），不进仓库
+.workbuddy/
+# 临时截图
+service/_[0-9a-z]*.png
+service/_[0-9a-z]*.jpg

@@ -2,8 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('read', 'write', 'delete')]
     [string]$Operation,
-    [ValidatePattern('^PSAI\.Canvas\.(Bailian|Test\.[0-9a-fA-F-]+)$')]
-    [string]$Target = 'PSAI.Canvas.Bailian'
+    [ValidatePattern('^Studio\.AiImg\.(Bailian|ThirdParty|BFL|Test\.[0-9a-fA-F-]+)$')]
+    [string]$Target = 'Studio.AiImg.Bailian'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,7 +15,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 
-public static class PsAiCredential {
+public static class StudioCredential {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NativeCredential {
         public UInt32 Flags;
@@ -86,11 +86,11 @@ switch ($Operation) {
     'write' {
         $inputText = [Console]::In.ReadToEnd()
         $bytes = [Text.Encoding]::UTF8.GetBytes($inputText)
-        [PsAiCredential]::Write($Target, $bytes)
+        [StudioCredential]::Write($Target, $bytes)
     }
     'read' {
-        $bytes = [PsAiCredential]::Read($Target)
+        $bytes = [StudioCredential]::Read($Target)
         if ($null -ne $bytes) { [Console]::Out.Write([Text.Encoding]::UTF8.GetString($bytes)) }
     }
-    'delete' { [PsAiCredential]::Delete($Target) }
+    'delete' { [StudioCredential]::Delete($Target) }
 }

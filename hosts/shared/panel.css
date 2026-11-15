@@ -1,0 +1,415 @@
+/* AI 图像工坊 · 面板样式（CEP / UXP 共用）
+ *
+ * 这一份是唯一源：CEP 用 <script> 加载、UXP 用 require，打包结构不同只能各放一份副本，
+ * 但内容必须逐字节一致（panel-parity.test.js 会断言）。
+ *
+ * 视觉方向：暗房仪器。
+ *   - 石墨底 + 琥珀强调色。琥珀是暗房安全灯的颜色，也是唯一一种不会干扰画面色彩
+ *     判断的暖色——修图时盯着面板，底色偏蓝会让人把照片看冷，这个面板不能有这个副作用。
+ *   - 整个界面只有一种彩色，其余全靠灰阶层次和 1px 细线。多一种颜色就少一分专业感。
+ *   - 数字一律等宽（tabular-nums）：尺寸、秒数、倍率在刷新时不能左右跳动。
+ *
+ * 兼容性硬约束：PS 2021 之前的 CEP 是 Chromium 61。
+ *   不用 gap（flex 的 gap 要 84+，grid 一律写 grid-gap）、不用 :has / :is / clamp() /
+ *   conic-gradient / accent-color / aspect-ratio / inset。视觉上要新，语法上必须老。
+ */
+:root{
+  color-scheme:dark light;
+
+  --bg:#161617;
+  --surface:#1c1c1e;
+  --surface-2:#222224;
+  --surface-3:#2a2a2d;
+  --line:#303033;
+  --line-strong:#3d3d41;
+
+  --text:#eae7e2;
+  --text-bright:#fffdf9;
+  --text-dim:#a9a49b;
+  --text-mute:#8b867c;
+
+  --accent:#e9a33f;
+  --accent-hover:#f5b558;
+  --accent-text:#1a1205;
+  --accent-veil:rgba(233,163,63,.14);
+  /* 键盘焦点线的颜色。刻意不用琥珀、也不用满白：它只负责「焦点在这儿」，
+     不该被误读成又一种状态色。 */
+  --focus-line:rgba(255,253,249,.42);
+
+  --ok:#8fbf6a;
+  --warn:#e0b25a;
+  --err:#e8735e;
+
+  --preview-bg:#0e0e0f;
+
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  font-size:13px;
+  line-height:1.45;
+}
+/* 主题：<html data-theme> 由 shared/theme.js 写入，无属性即深色。
+ *   无属性        = 深色（默认，也是「自动」在暗色系统上解析出的结果）
+ *   data-theme="light" = 浅色
+ *   data-theme="ps"    = Photoshop 灰（与 PS 面板同色，界面看不出拼接）
+ *
+ * 原来是 @media (prefers-color-scheme:light)：系统给什么就只能是那个，用户改不了。
+ * 现在把「自动」的解析交给 JS（matchMedia），CSS 只认显式属性——少一层选择器，
+ * 也少一个只能在特定系统上才走到的分支。Chromium 61 忽略 @media 的老问题一并消失。 */
+:root[data-theme="light"]{
+  color-scheme:light;
+
+  --bg:#f6f4f0;
+  --surface:#fffdfa;
+  --surface-2:#efece6;
+  --surface-3:#e6e2da;
+  --line:#e0dcd3;
+  --line-strong:#c9c4b8;
+
+  --text:#1e1c19;
+  --text-bright:#0a0908;
+  --text-dim:#55524b;
+  --text-mute:#7b766c;
+
+  --accent:#a8630a;
+  --accent-hover:#8d5207;
+  --accent-text:#fff8ee;
+  --accent-veil:rgba(168,99,10,.12);
+  --focus-line:rgba(10,9,8,.34);
+
+  --ok:#3f6b22;
+  --warn:#8a5c11;
+  --err:#a8341f;
+  --preview-bg:#e7e3db;
+}
+
+/* Photoshop 灰：底色直接取 PS 面板的 #424242，做「和宿主长在一起」的那一档。
+ * 灰阶是**上调**而不是下调——整套组件都假设 surface 比 bg 亮一档（输入框、卡片浮在面板上），
+ * 反过来的话输入框会陷进面板里，分段当前项、次要按钮的层次会全部翻过来。
+ * 色相一律中性：我们自己的石墨底是暖的，跟 PS 的中性灰并排会看出两个系统的接缝。 */
+:root[data-theme="ps"]{
+  color-scheme:dark;
+
+  --bg:#424242;
+  --surface:#4b4b4b;
+  --surface-2:#525252;
+  --surface-3:#5c5c5c;
+  --line:#555555;
+  --line-strong:#6a6a6a;
+
+  --text:#e4e4e4;
+  --text-bright:#ffffff;
+  --text-dim:#b0b0b0;
+  --text-mute:#8f8f8f;
+
+  /* 琥珀在 #424242 上的对比度约 5.6:1，够用，所以强调色不换——换了就不再是我们这个面板。
+     语义色提亮一档：同一组深绿/深黄/深红在浅一层的灰上会发闷。 */
+  --accent:#e9a33f;
+  --accent-hover:#f5b558;
+  --accent-text:#1a1205;
+  --accent-veil:rgba(233,163,63,.18);
+  --focus-line:rgba(255,255,255,.45);
+
+  --ok:#9acb74;
+  --warn:#e8bb63;
+  --err:#ef7f6a;
+  --preview-bg:#2e2e2e;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%;overflow-y:auto;overflow-x:hidden}
+body{margin:0;min-width:280px;background:var(--bg)}
+.panel{padding:14px 14px 22px;max-width:520px;margin:0 auto}
+
+/* ── 页头：标记 + 标题 + 文档状态 ─────────────────────────────
+ * 原来这里是「小字英文 eyebrow + 大标题」两行，再加一个独立的文档信息框，
+ * 三条信息各占一行、三种字号，顶部三分之一全是元信息。现在合成一块：
+ * 琥珀光环是品牌标记，标题 14px，文档尺寸退回 11px 副标——它是上下文，不是主内容。 */
+.top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+.brand{display:flex;align-items:flex-start;min-width:0}
+.mark{flex:none;width:20px;height:20px;margin:1px 9px 0 0;border:1px solid var(--accent);border-radius:50%;position:relative;opacity:.9}
+.mark::after{content:'';position:absolute;left:5px;top:5px;right:5px;bottom:5px;border-radius:50%;background:var(--accent)}
+.brand-text{min-width:0}
+h1{font-size:14px;line-height:1.25;margin:0;font-weight:600;letter-spacing:.01em;color:var(--text-bright)}
+.document{font-size:11px;color:var(--text-mute);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+
+.icon{flex:none;width:28px;height:28px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text-dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.icon:hover{background:var(--surface-2);border-color:var(--line);color:var(--text-bright)}
+.icon svg{width:15px;height:15px;display:block;fill:none;stroke:currentColor;stroke-width:1.5}
+
+/* ── 渠道行：一行读数，状态只交给右侧胶囊 ─────────────────────
+ * 原来一行里堆了四样东西：指示灯 + 一整句话 + 箭头 + 上下两条线。而下面模式框
+ * 自带边框，40px 内出现三条横线；句子又把「固定类别」和「可变模型」用同一个
+ * 字色连成一串，读起来既挤又分不清主次。
+ * 现在拆成两段：左边是类别（第三方 API / 百炼 / 本地服务），右边是变化的那半截
+ * （模型名、或下一步该干什么），做成胶囊。状态色只出现在胶囊上——一处颜色只
+ * 表达一件事，不再出现「灯也绿、字也绿」。
+ * 分隔只留上面一条线，下面交给模式框自己的边框。 */
+.provider{display:flex;align-items:center;width:100%;margin:0 0 12px;padding:7px 1px;border:0;border-top:1px solid var(--line);background:none;color:var(--text-dim);font:inherit;text-align:left;cursor:pointer;border-radius:0}
+.provider:hover{color:var(--text)}
+.provider-label{flex:none;font-size:11.5px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.provider-chip{flex:0 1 auto;min-width:0;margin-left:8px;padding:2px 7px;border:1px solid var(--line-strong);border-radius:5px;background:var(--surface-2);color:var(--text-dim);font-size:11px;line-height:1.45;letter-spacing:.01em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 没有后半截时别留一个空壳子（例如 JS 直接塞了一句完整报错）。 */
+.provider-chip:empty{display:none}
+.provider.ok .provider-chip{border-color:var(--ok);color:var(--ok);background:rgba(143,191,106,.13)}
+.provider.warn .provider-chip{border-color:var(--warn);color:var(--warn);background:rgba(224,178,90,.13)}
+.provider.error .provider-chip{border-color:var(--err);color:var(--err);background:rgba(232,115,94,.13)}
+.provider-go{flex:none;margin-left:auto;padding-left:8px;color:var(--text-mute);transition:transform .12s}
+.provider:hover .provider-go{transform:translateX(2px);color:var(--accent)}
+
+/* ── 模式：分段控件，当前项底部一道琥珀 ───────────────────────
+ * 用 inset 阴影画指示条，不额外加元素、不做定位运算，圆角内也不会露头。 */
+.modes{display:grid;grid-template-columns:repeat(3,1fr);grid-gap:2px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:3px;margin-bottom:16px}
+.mode{border:0;border-radius:7px;background:transparent;color:var(--text-dim);padding:8px 2px;cursor:pointer;font:inherit;font-size:12.5px;min-height:32px;transition:background .12s,color .12s}
+.mode:hover{color:var(--text-bright)}
+.mode.active{background:var(--surface-3);color:var(--text-bright);font-weight:600;box-shadow:inset 0 -2px 0 0 var(--accent)}
+
+/* ── 字段 ──────────────────────────────────────────────────── */
+.field-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:7px}
+.field-head label,.work>label{font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:.04em}
+.hint-chip{font-size:11px;font-weight:400;color:var(--text-mute);letter-spacing:0}
+
+textarea,input,select{font:inherit;color:var(--text)}
+textarea{display:block;width:100%;resize:vertical;min-height:82px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);padding:10px 11px;line-height:1.55;outline:none;transition:border-color .12s,box-shadow .12s}
+textarea:focus,input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-veil);outline:0}
+textarea::placeholder,input::placeholder{color:var(--text-mute)}
+/* 数字框默认带上下箭头，在 48px 宽的倍率格里要吃掉 13px，把 1.272 挤成 1.27。
+   这个面板里没有人用点箭头的方式调倍率，隐藏掉，宽度还给数字。 */
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+/* 焦点不再用 outline。两个理由，第二个是用户提出来的：
+ * 一、Chromium 61 的 outline 永远是直角，套在圆角控件上像贴了一张方纸；
+ * 二、它会和「选中」撞车——选中项的琥珀底部指示条在里面，outline 的琥珀方框在外面，
+ *    同一个控件上并排两层黄框，看着不像一件东西。
+ * 改成内嵌 1px 亮线：贴着自己的圆角走，颜色中性，不参与任何状态配色，永远抢不了戏。
+ * :focus-visible 要 Chromium 86+，老 CEP 会整条丢弃 —— main.js 探到不支持时给 <html>
+ * 加 .legacy-focus，用 :focus 兜底，键盘操作不至于完全失去定位。 */
+button:focus-visible,summary:focus-visible,label:focus-visible{outline:0;box-shadow:inset 0 0 0 1px var(--focus-line)}
+.legacy-focus button:focus,.legacy-focus summary:focus,.legacy-focus label:focus{outline:0;box-shadow:inset 0 0 0 1px var(--focus-line)}
+/* box-shadow 只有一条属性，焦点线会顶掉选中项的底部指示条，这里把两条叠回去。 */
+.mode.active:focus-visible,.legacy-focus .mode.active:focus{outline:0;box-shadow:inset 0 0 0 1px var(--focus-line),inset 0 -2px 0 0 var(--accent)}
+/* CEP 61 没有 :focus-visible，鼠标点完焦点会一直停在那里。main.js 记着「最后一次输入
+ * 是鼠标还是键盘」：鼠标点过就加 .pointer，把焦点线撤掉——点完不该在界面上留痕迹。
+ * 注意每条都要写 outline:0：不写就轮到浏览器自己那圈 1px auto 白框（实测是 238 灰白），
+ * 那比原来的琥珀框还显眼。 */
+.legacy-focus.pointer button:focus,.legacy-focus.pointer summary:focus,.legacy-focus.pointer label:focus{outline:0;box-shadow:none}
+.legacy-focus.pointer .mode.active:focus{outline:0;box-shadow:inset 0 -2px 0 0 var(--accent)}
+
+/* ── 扩图倍率：画布框里的十字 ─────────────────────────────────
+ * 四个数字原来排成一行，用「上 右 下 左」四个字标注，读起来要在大脑里翻译一次方向。
+ * 现在把它们摆到画布的四条边上，中间写着「1 = 不扩」——方向即位置，不用翻译。
+ * 纯 CSS 网格排布，DOM 还是那四个 label，逻辑和测试都不受影响。 */
+.directions{margin-top:14px}
+.note{color:var(--text-mute);font-size:11.5px;line-height:1.6;margin:0 0 12px}
+.scale-grid{display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto auto auto;grid-gap:6px;max-width:320px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:9px 8px}
+/* 中间那块虚线就是「原图」。四个数字贴着它的四条边，方向即位置，不用在大脑里翻译一次。 */
+.scale-grid::before{content:'';grid-area:2/2;align-self:center;justify-self:stretch;height:20px;margin:0 8px;border:1px dashed var(--line-strong);border-radius:3px}
+.scale-grid label{display:flex;align-items:center;justify-content:center;min-width:0;font-size:11px;font-weight:600;color:var(--text-mute);white-space:nowrap}
+.scale-grid input{display:block;width:48px;flex:none;margin-left:5px;padding:4px 2px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums;background:var(--surface);border:1px solid var(--line-strong);border-radius:5px;color:var(--text);outline:none}
+/* 上/下 两格是「字 + 框」整体居中，框因此比中间那块虚线偏右约 7px。
+   给这两格补一点右内边距，把框拉回中线上——不加元素、不动 DOM 的代价最小做法。 */
+.scale-grid label[for="top"]{grid-area:1/2;padding-right:14px}
+.scale-grid label[for="left"]{grid-area:2/1}
+.scale-grid label[for="right"]{grid-area:2/3}
+.scale-grid label[for="bottom"]{grid-area:3/2;padding-right:14px}
+/* 推导出来的倍率是「读数」，不是「输入」：去掉输入框的边框和底色，让它看起来像
+   仪表上的数字。留着输入框的样子，用户会以为自己该在这里填点什么，或者以为
+   看到的这个数就是自己要负责的数——而它其实是画布透明边决定的。 */
+/* 推导成功时这四个框是「读数」不是「输入」：框体和可编辑时完全一样（实线、同底色），
+ * 只把数字调灰 + readOnly，说明文字就写在上面那行 note 里。
+ * 不要用「去边框」或「改虚线」来表达只读——去边框会让控件看起来没渲染出来
+ * （「运行的时候怎么变样了」），虚线则和中央的原图框混成同一种语义。 */
+.scale-grid.derived input{color:var(--text-dim);cursor:default}
+.scale-grid.derived label{color:var(--text-mute)}
+
+/* ── 折叠区（更多选项 / 手动连接码）───────────────────────────
+ * 用 + / − 代替 ▸/▾：字形稳定，不会因为字体缺字变成方块（Windows 上见过）。 */
+details{margin:14px 0 0;border-top:1px solid var(--line)}
+summary{cursor:pointer;color:var(--text-dim);font-size:11.5px;padding:10px 0;list-style:none;outline:none;display:flex;align-items:center;justify-content:space-between}
+summary::-webkit-details-marker{display:none}
+summary::after{content:'+';color:var(--text-mute);font-size:13px;line-height:1;margin-left:8px}
+details[open] summary::after{content:'−'}
+details[open] summary{color:var(--text)}
+
+/* 选项排成一张表：名称靠左、控件靠右、行间一条细线。比「标签 + 右侧固定宽输入框」
+ * 更整齐，也顺手解决了两端 step、宽度、对齐各写一套的问题。 */
+.advanced-fields{display:grid;grid-gap:0;padding-bottom:4px}
+.advanced-fields label{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:400;color:var(--text-dim);letter-spacing:0;padding:7px 0;border-bottom:1px solid var(--line);margin:0}
+.advanced-fields label:last-child{border-bottom:0}
+.advanced-fields label span{flex:1;min-width:0}
+.advanced-fields select,.advanced-fields input[type=number]{flex:none;width:112px;padding:5px 7px;background:var(--surface);border:1px solid var(--line-strong);border-radius:5px;color:var(--text);font-size:12px;outline:none}
+.advanced-fields input[type=range]{-webkit-appearance:none;appearance:none;flex:none;width:112px;height:3px;border-radius:2px;background:var(--line-strong);outline:none}
+.advanced-fields input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);border:0;cursor:pointer}
+.advanced-fields input[type=checkbox]{-webkit-appearance:none;appearance:none;flex:none;width:15px;height:15px;margin:0 8px 0 0;border:1px solid var(--text-mute);border-radius:4px;background:var(--surface);position:relative;cursor:pointer}
+.advanced-fields input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+.advanced-fields input[type=checkbox]:checked::after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid var(--accent-text);border-width:0 2px 2px 0;transform:rotate(42deg)}
+.advanced-fields label#whole-row{justify-content:flex-start}
+
+/* ── 参数行：三个短参数并排、常显 ─────────────────────────────
+ * 候选数量 / 随机种子 / 输出尺寸 原来一人一行塞在「更多选项」里，每次生成都得先展开。
+ * 可它们是每次都要看的量，不是「偶尔调一次」的高级项，所以提到外面排成一行：
+ * 标签在上、控件在下，行高从三行压到一行。
+ *
+ * 用 flex 不用 grid：输出尺寸只在「生成」模式出现，它一隐藏，另外两个自动各占一半；
+ * 换成 grid 会留下一个空格子。间距用子项右外边距 + 容器负边距，不用 gap（CEP 61 不支持）。 */
+.param-row{display:flex;align-items:flex-start;margin:14px -6px 0 0}
+.param-row label{flex:1 1 0;min-width:0;margin-right:6px}
+.param-row label.wide{flex-grow:1.6}
+.param-row label>span{display:block;margin-bottom:5px;font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.param-row select,.param-row input{display:block;width:100%;padding:6px 7px;background:var(--surface);border:1px solid var(--line-strong);border-radius:6px;color:var(--text);font-size:12px;font-variant-numeric:tabular-nums;outline:none}
+
+/* ── 主操作 ─────────────────────────────────────────────────
+ * 生成期间只剩一个禁用的按钮，「停止」从整宽按钮降级成右侧窄按钮：
+ * 它是个补救动作，不该和主动作平分视线。 */
+.actions{display:flex;margin-top:14px}
+.actions .primary{flex:1 1 auto;min-width:0}
+.actions .quiet{flex:0 0 auto;width:auto;margin-left:8px;padding:0 14px}
+
+.primary,.secondary,.quiet{width:100%;border:0;border-radius:8px;padding:11px 12px;font:inherit;font-weight:600;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+.primary{background:var(--accent);color:var(--accent-text);letter-spacing:.03em}
+.primary:hover{background:var(--accent-hover)}
+.primary:disabled{background:var(--surface-3);color:var(--text-mute);cursor:default}
+.secondary{background:var(--surface-3);color:var(--text);border:1px solid var(--line-strong)}
+.secondary:hover{border-color:var(--accent);color:var(--accent)}
+.secondary:disabled,.quiet:disabled{opacity:.4;cursor:not-allowed}
+.secondary:disabled:hover{border-color:var(--line-strong);color:var(--text)}
+.quiet{background:transparent;border:1px solid var(--line-strong);color:var(--text-dim)}
+.quiet:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── 状态读数 ───────────────────────────────────────────────
+ * 原来只是一行灰字，在一个长面板里很容易被忽略。现在左侧一条 2px 指示条，
+ * 颜色跟状态走；:not(:empty) 保证没有消息时不留一条孤零零的竖线。
+ * 数字用等宽，秒数从 9 跳到 10 时不会把整行推一下。 */
+.status{font-size:11.5px;line-height:1.55;color:var(--text-mute);margin:11px 0 0;font-variant-numeric:tabular-nums;word-break:break-word}
+.status:not(:empty){position:relative;padding-left:11px}
+.status:not(:empty)::before{content:'';position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:1px;background:var(--line-strong)}
+.status.error{color:var(--err)}
+.status.error::before{background:var(--err)}
+.status.ok{color:var(--ok)}
+.status.ok::before{background:var(--ok)}
+.status.warn{color:var(--warn)}
+.status.warn::before{background:var(--warn)}
+
+/* ── 结果 ───────────────────────────────────────────────────
+ * 卡片复用（不重建 DOM），图按真实比例显示；左下角一个序号角标，
+ * 因为「应用候选 2」这种句子在多张候选时比角标难扫。 */
+.previews{margin-top:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-gap:8px}
+.previews[data-count="1"]{grid-template-columns:1fr}
+.preview{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.preview img{display:block;width:100%;min-height:110px;max-height:320px;object-fit:contain;background:var(--preview-bg)}
+.preview .idx{position:absolute;left:6px;top:6px;padding:1px 5px;border-radius:4px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+/* 图本身就是入口：点一下进大图对比。右上角的放大键是给「看不出这里能点」的人看的，
+ * 它压在图右上角、和序号角标对称，所以两个都是 rgba 黑底浮层。 */
+.preview img{cursor:zoom-in}
+.preview .preview-zoom{position:absolute;right:6px;top:6px;width:24px;height:24px;padding:0;border:0;border-top:0;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:0;line-height:0;cursor:zoom-in;display:flex;align-items:center;justify-content:center}
+.preview .preview-zoom svg{width:13px;height:13px;display:block;fill:none;stroke:currentColor;stroke-width:1.5}
+.preview .preview-zoom:hover{background:var(--accent);color:var(--accent-text)}
+.preview button{width:100%;border:0;border-top:1px solid var(--line);background:var(--surface-3);color:var(--text);padding:8px;cursor:pointer;font:inherit;font-size:11.5px;letter-spacing:.04em;transition:background .12s,color .12s}
+.preview button:hover{background:var(--accent);color:var(--accent-text)}
+
+/* 生成中的占位：让用户看到「图会出现在这里」，而不是盯着空白猜有没有反应。
+   扫描线只是气氛，prefers-reduced-motion 下全局会关掉动画，退化成静态框。 */
+.preview-placeholder{margin-top:16px;height:190px;border:1px solid var(--line);border-radius:9px;background:var(--preview-bg);position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.preview-placeholder::after{content:'';position:absolute;left:0;right:0;top:-40%;height:40%;background:linear-gradient(180deg,rgba(233,163,63,0),rgba(233,163,63,.18),rgba(233,163,63,0));animation:ph-sweep 2.4s linear infinite}
+.preview-placeholder>*{position:relative;z-index:1}
+.ph-ring{width:18px;height:18px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;animation:ph-spin .9s linear infinite;margin-bottom:11px}
+.ph-label{font-size:11.5px;color:var(--text-dim);letter-spacing:.04em}
+.ph-note{font-size:11px;color:var(--text-mute);margin-top:4px}
+@keyframes ph-sweep{from{top:-40%}to{top:100%}}
+@keyframes ph-spin{to{transform:rotate(360deg)}}
+
+/* ── 结果预览（覆盖层）──────────────────────────────────────
+ * 候选卡最高 320px，看接缝、看模型把哪个角改坏了都不够。点图进这一层：整幅大图，
+ * 加一条「原图 ↔ 生成后」的竖线滑块。两层图必须严格同宽叠放，否则对比本身就在骗人：
+ * 底图留在文档流里决定容器大小，结果图绝对定位，宽度由 compare-view.js 写成与容器
+ * 等宽的像素值（--cmp-w）。为什么不用百分比——结果图被「只露出左半边」的裁切框包着，
+ * 百分比会按裁切框算，图会被压扁；为什么不用 clip-path——UXP 的 CSS 子集不保证支持，
+ * 而不支持时的表现是「整张结果盖住底图」，滑块拖了没反应。
+ * --cmp-w / --cmp-x 是几何读数（同 img.src 的处境），不是外观；颜色与显示仍只由 CSS 决定。 */
+.viewer{position:fixed;top:0;right:0;bottom:0;left:0;background:var(--bg);padding:14px 14px 22px;overflow:auto;z-index:2;display:flex;flex-direction:column}
+.viewer .settings-head{flex:none}
+.viewer-tools{display:flex;align-items:center}
+.viewer-tools .mini{margin-left:0;margin-right:8px}
+.viewer-photo{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:9px;background:var(--preview-bg)}
+
+.compare{--cmp-x:50%;--cmp-w:100%;position:relative;overflow:hidden;background:var(--preview-bg);border:1px solid var(--line);border-radius:9px;cursor:ew-resize;user-select:none}
+/* 结果是底层、在文档流里定容器大小；原图盖在上面、被 --cmp-x 裁出左边那一块。
+ * 这样竖线左边是「原来什么样」、右边是「现在什么样」，和两个角标的位置一致：
+ * 反过来（原图在底层）也能对齐，但左右语义就反了，看着像「生成了左边的图」。 */
+.compare-after{display:block;width:100%;height:auto}
+.compare-reveal{position:absolute;top:0;left:0;bottom:0;width:var(--cmp-x);overflow:hidden}
+.compare-before{position:absolute;top:0;left:0;width:var(--cmp-w);height:auto}
+/* 竖线用强调色：这个视图里只有它是可操作的，别的都是画面本身。 */
+.compare-handle{position:absolute;top:0;bottom:0;left:var(--cmp-x);width:2px;margin-left:-1px;background:var(--accent);pointer-events:none}
+.compare-handle::after{content:'';position:absolute;top:50%;left:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:var(--accent)}
+.compare-tag{position:absolute;bottom:6px;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;letter-spacing:.08em;pointer-events:none}
+.compare-tag-before{left:6px}
+.compare-tag-after{right:6px}
+
+/* 下方滑杆与图上拖动是同一个值。图上的拖动在 UXP 上不保证有鼠标事件，这条 range
+   是那条路径的兜底，也是键盘与精确微调的入口（方向键每次 2%）。 */
+.compare-bar{margin-top:14px}
+.compare-range{-webkit-appearance:none;appearance:none;width:100%;height:3px;border-radius:2px;background:var(--line-strong);outline:none;margin:0}
+.compare-range::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);border:0;cursor:pointer}
+/* 说明必须留在滑杆外面：纯生成没有滑杆，那句「这次没有可对照的原图」就挂在这里。
+   放进 .compare-bar 里的话，没有对比时它跟着一起被隐藏，用户只看到一张图、不知道为什么没有滑块。 */
+.viewer-note{margin-top:11px}
+
+/* ── 设置页 ─────────────────────────────────────────────────
+ * 只分两组：生成渠道（用户来这里的真实目的）、本地服务（平时不用管）。
+ * 原来是一段三句话的说明 + 一个整宽的「启动本地服务」按钮占据首屏，渠道设置被推到下面。
+ * 现在说明压成一句放在渠道表单底部（Key 存哪，是信任问题，得留着）。
+ * 不用 inset:0 —— 那是 Chromium 87+ 的简写，老 CEP 会把整条规则丢掉，设置页会缩成内容宽。 */
+.settings{position:fixed;top:0;right:0;bottom:0;left:0;background:var(--bg);padding:14px 14px 28px;overflow:auto;z-index:2}
+.settings-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.settings-head h2{margin:0;font-size:14px;font-weight:600;letter-spacing:.02em;color:var(--text-bright)}
+.hidden{display:none!important}
+
+.group{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
+/* 用「紧跟页头的那一组」而不是 :first-of-type —— 页头本身也是 div，
+   :first-of-type 会先匹到它，第一条分隔线就一直留着。 */
+.settings-head+.group{border-top:0;margin-top:0;padding-top:0}
+.group-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.group-head h3{margin:0;font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:.06em}
+.lock{font-size:10px;font-weight:600;color:var(--err);background:rgba(232,115,94,.1);border:1px solid rgba(232,115,94,.38);border-radius:4px;padding:2px 6px}
+
+.settings label{display:block;margin:0 0 10px;font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:.03em}
+.settings input,.settings select{display:block;width:100%;padding:8px 10px;margin-top:5px;background:var(--surface);border:1px solid var(--line-strong);border-radius:7px;color:var(--text);font-size:12.5px;outline:none;transition:border-color .12s,box-shadow .12s}
+.settings input:disabled,.settings select:disabled{opacity:.5;cursor:not-allowed}
+.channel-body{padding-bottom:2px}
+.channel-actions{display:grid;grid-template-columns:1fr 1fr;grid-gap:8px;margin-top:2px}
+.channel-actions button{margin-top:0;padding:9px 10px;font-size:12px}
+.hint{font-size:11px;line-height:1.55;color:var(--text-mute);margin:10px 0 0}
+/* 渠道表单里的说明文字是最后一个元素，下面紧接 .channel-actions（margin-top 只有 2px）。
+ * 不补下边距的话，文字会贴到「保存」按钮上——FLUX 页那块说明就长到换行，视觉上像被裁掉一半。 */
+.channel-body .hint{margin:10px 0 10px}
+
+/* 本地服务：一行状态 + 一个文字按钮。它不是日常路径，只在服务没起来时才有用。
+   启动按钮放在分组标题右侧（标题即作用域），不占一整行。 */
+.mini{flex:none;margin-left:10px;padding:4px 9px;border:1px solid var(--line-strong);border-radius:6px;background:transparent;color:var(--text-dim);font:inherit;font-size:11px;cursor:pointer}
+.mini:hover{border-color:var(--accent);color:var(--accent)}
+.manual-token{margin-top:14px;border-top:1px solid var(--line)}
+.manual-token[open] summary{margin-bottom:10px}
+
+/* ── 分段控件（设置页的渠道切换）───────────────────────────── */
+.segmented{display:grid;grid-template-columns:1fr 1fr;grid-gap:2px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:3px;margin-bottom:12px}
+/* 分段项数量由 data-count 决定，跟 .previews 用同一套约定。四段时每格约 60px，
+ * 字号收到 11.5px：「自动 / 深色 / PS 灰 / 浅色」四组两个字的按钮才不至于贴边。 */
+.segmented[data-count="3"]{grid-template-columns:repeat(3,1fr)}
+/* 三段时「第三方 API」要挤进 1/3 格宽，字号收一档、左右内边距收到 2px。
+ * 用户自定义的渠道名可能更长，靠 .seg 已有的 ellipsis 截断——宁可截字也不能换行。 */
+.segmented[data-count="3"] .seg{font-size:11.5px;padding:7px 2px}
+.segmented[data-count="4"]{grid-template-columns:repeat(4,1fr)}
+.segmented[data-count="4"] .seg{font-size:11.5px;padding:7px 2px}
+.seg{border:0;border-radius:7px;background:transparent;color:var(--text-dim);padding:7px 4px;min-height:30px;cursor:pointer;font:inherit;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seg:hover{color:var(--text-bright)}
+.seg.active{background:var(--surface-3);color:var(--text-bright);font-weight:600;box-shadow:inset 0 -2px 0 0 var(--accent)}
+.seg:disabled{opacity:.45;cursor:default}
+
+/* 滚动条样式只在 CEP（Chromium）生效；UXP 的 CSS 引擎会忽略不认识的伪元素，不影响其余规则。 */
+::-webkit-scrollbar{width:12px;height:12px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px;border:3px solid var(--bg);min-height:40px}
+::-webkit-scrollbar-thumb:hover{background:var(--text-mute)}
+::-webkit-scrollbar-corner{background:var(--bg)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}

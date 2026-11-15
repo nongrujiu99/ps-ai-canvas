@@ -1,13 +1,13 @@
 {
   "manifestVersion": 5,
-  "id": "org.psai.canvas.uxp",
-  "name": "PS AI 画布",
+  "id": "org.studio.aiimg.uxp",
+  "name": "AI 图像工坊",
   "version": "0.1.0",
   "main": "index.html",
   "host": { "app": "PS", "minVersion": "25.0.0" },
   "entrypoints": [
-    { "type": "panel", "id": "canvas", "label": { "default": "PS AI 画布" }, "minimumSize": { "width": 280, "height": 420 }, "preferredDockedSize": { "width": 340, "height": 560 }, "preferredFloatingSize": { "width": 400, "height": 650 } },
-    { "type": "command", "id": "quick", "label": { "default": "按选区打开 PS AI 画布" } }
+    { "type": "panel", "id": "canvas", "label": { "default": "AI 图像工坊" }, "minimumSize": { "width": 280, "height": 420 }, "preferredDockedSize": { "width": 340, "height": 560 }, "preferredFloatingSize": { "width": 400, "height": 650 } },
+    { "type": "command", "id": "quick", "label": { "default": "按选区打开 AI 图像工坊" } }
   ],
   "requiredPermissions": {
     "network": { "domains": ["http://127.0.0.1:32145"] },

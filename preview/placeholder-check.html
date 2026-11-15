@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>生成中占位检查</title>
+<link rel="stylesheet" href="../hosts/shared/panel.css">
+<style>
+  body{margin:0;padding:16px;width:340px}
+  .mode-row{display:grid;grid-template-columns:repeat(3,1fr);grid-gap:4px;margin-bottom:14px}
+  .mode-row div{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:9px;text-align:center;font-size:12px;color:var(--text-dim)}
+  .mode-row div.active{background:var(--mode-active);color:var(--text-bright)}
+  button.primary{width:100%;padding:11px;border:0;border-radius:6px;background:var(--accent);color:var(--accent-text);font-size:13px;font-weight:600}
+  .status{font-size:12px;line-height:1.5;color:var(--text-dim);margin:11px 0 0}
+</style>
+</head>
+<body>
+  <div class="mode-row"><div>选区编辑</div><div class="active">扩图</div><div>生成</div></div>
+  <button class="primary">生成预览</button>
+  <p class="status">正在生成预览…  ·  47 秒</p>
+  <div class="preview-placeholder">
+    <div class="ph-ring"></div>
+    <div class="ph-label">生成中</div>
+    <div class="ph-note">画布越大越慢，通常 30 秒到 3 分钟</div>
+  </div>
+</body>
+</html>

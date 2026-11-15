@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 图像工坊 · 交互预览</title>
+  <!-- 用的是真实面板样式，不是复刻副本 -->
+  <link rel="stylesheet" href="../hosts/cep/css/panel.css">
+  <style>
+    /* 演示控制台不参与面板布局，用 dk- 前缀避免和 panel.css 撞车。
+       宽屏时并排放在面板右侧（不遮内容），窄屏退化成左下角浮层并默认收起。 */
+    .dk-wrap{display:flex;justify-content:center;align-items:flex-start;gap:18px}
+    .dk-wrap>main{margin:0}
+    .dk-bar{width:238px;flex:0 0 238px;position:sticky;top:16px;z-index:20;margin-top:16px;font:12px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+      color:#e8eaed;background:#111317;border:1px solid #313640;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);overflow:hidden}
+    .dk-bar.collapsed .dk-body,.dk-bar.collapsed .dk-note{display:none}
+    .dk-head{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#181b21;cursor:pointer;user-select:none}
+    .dk-head b{font-weight:600;font-size:11px;letter-spacing:.06em;color:#9aa4b2}
+    .dk-head span{color:#6c7784;font-size:11px}
+    .dk-body{padding:8px 10px 10px}
+    .dk-row{margin-bottom:8px}
+    .dk-row:last-child{margin-bottom:0}
+    .dk-row>i{display:block;font-style:normal;font-size:10px;letter-spacing:.08em;color:#727d8b;margin-bottom:4px}
+    .dk-seg{display:flex;flex-wrap:wrap;gap:4px}
+    .dk-seg button{flex:1 1 auto;min-width:0;padding:5px 6px;font-size:11px;border-radius:5px;border:1px solid #313640;background:#1c2027;color:#c2cad4;cursor:pointer;white-space:nowrap}
+    .dk-seg button:hover{background:#232832}
+    .dk-seg button.on{background:#2f5bd7;border-color:#2f5bd7;color:#fff}
+    .dk-note{padding:8px 10px;border-top:1px solid #262b33;color:#7d8896;font-size:11px;line-height:1.55}
+    @media (max-width:840px){
+      .dk-wrap{display:block}
+      /* top:auto 必须写：base 规则里的 top:16px 会和 bottom:12px 一起生效，
+         把浮层拉成整屏高（只改 position 不会清掉 top）。 */
+      .dk-bar{position:fixed;left:12px;bottom:12px;top:auto;width:238px;margin:0;flex:none;z-index:9}
+    }
+  </style>
+</head>
+<body>
+  <div class="dk-wrap">
+  <main class="panel">
+
+    <!-- 页头：标记 + 标题 + 文档状态。文档尺寸是上下文，退成副标，不再单独占一行。 -->
+    <header class="top">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <h1>AI 图像工坊</h1>
+          <div id="document" class="document">正在读取 Photoshop 文档…</div>
+        </div>
+      </div>
+      <button id="settings-toggle" class="icon" aria-label="设置" title="设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 6.9l2.6 1.5M17.2 15.6l2.6 1.5M19.8 6.9l-2.6 1.5M6.8 15.6l-2.6 1.5"/></svg>
+      </button>
+    </header>
+
+    <button id="provider" class="provider" type="button" title="点击查看或修改生成渠道">
+      <span id="provider-label" class="provider-label">本地服务</span>
+      <span id="provider-chip" class="provider-chip">正在检查…</span>
+      <span class="provider-go" aria-hidden="true">›</span>
+    </button>
+
+    <nav class="modes" aria-label="操作模式">
+      <button class="mode active" data-mode="edit">选区编辑</button>
+      <button class="mode" data-mode="expand">扩图</button>
+      <button class="mode" data-mode="generate">生成</button>
+    </nav>
+
+    <section class="work">
+      <div class="field-head">
+        <label for="prompt">画面描述</label>
+        <span id="prompt-hint" class="hint-chip">可留空</span>
+      </div>
+      <textarea id="prompt" rows="3" placeholder="例如：把选区里的杯子换成白色陶瓷花瓶"></textarea>
+
+      <div id="expand-directions" class="directions hidden">
+        <div class="note" id="scale-note">倍率按画布透明边自动推算（1 = 不扩）。<br>描述只写材质和光线，别列物体。</div>
+        <div id="scale-grid" class="scale-grid">
+          <label for="top">上 <input id="top" type="number" min="1" max="2" step="0.01" value="1"></label>
+          <label for="right">右 <input id="right" type="number" min="1" max="2" step="0.01" value="1"></label>
+          <label for="bottom">下 <input id="bottom" type="number" min="1" max="2" step="0.01" value="1"></label>
+          <label for="left">左 <input id="left" type="number" min="1" max="2" step="0.01" value="1"></label>
+        </div>
+      </div>
+
+      <div class="param-row">
+        <label for="count"><span>候选数量</span><select id="count"><option value="1">1 张</option><option value="2">2 张</option><option value="3">3 张</option><option value="4">4 张</option></select></label>
+        <label for="seed"><span>随机种子</span><input id="seed" type="number" min="0" max="2147483647" placeholder="留空" title="留空为随机"></label>
+        <label id="size-row" class="wide hidden" for="size"><span>输出尺寸</span><select id="size"><option value="1024*1024">1024 × 1024</option><option value="1280*720">1280 × 720</option><option value="720*1280">720 × 1280</option></select></label>
+      </div>
+      <details id="advanced">
+        <summary>更多选项</summary>
+        <div class="advanced-fields">
+          <label id="whole-row" for="whole"><input id="whole" type="checkbox"><span>整张画面重绘</span></label>
+          <label id="strength-row" class="hidden" for="strength"><span>修改幅度</span><input id="strength" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+        </div>
+      </details>
+
+      <div class="actions">
+        <button id="run" class="primary">生成预览</button>
+        <button id="cancel" class="quiet hidden">停止</button>
+      </div>
+      <p id="status" role="status" class="status"></p>
+    </section>
+
+    <section id="previews" class="previews hidden" aria-label="生成结果"></section>
+
+    <!-- 结果预览：点候选图（或右上角放大键）进入。两层图叠放 + 一条竖线滑块，
+         左边原图、右边生成后；纯生成没有底稿时退化成单图大图。覆盖层的定位方式
+         与设置页一致（position:fixed 四边 0），同一时间只会开一层。 -->
+    <section id="viewer" class="viewer hidden" aria-label="结果预览">
+      <div class="settings-head">
+        <h2 id="viewer-title">结果预览</h2>
+        <div class="viewer-tools">
+          <button id="viewer-compare" class="mini" type="button">只看结果</button>
+          <button id="viewer-close" class="icon" aria-label="关闭预览">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="compare" class="compare hidden">
+        <img id="compare-after" class="compare-after" alt="生成结果">
+        <div class="compare-reveal"><img id="compare-before" class="compare-before" alt="原图"></div>
+        <span class="compare-tag compare-tag-before">原图</span>
+        <span class="compare-tag compare-tag-after">生成后</span>
+        <span class="compare-handle" aria-hidden="true"></span>
+      </div>
+      <img id="viewer-photo" class="viewer-photo hidden" alt="生成结果">
+      <div id="compare-bar" class="compare-bar hidden">
+        <input id="compare-range" class="compare-range" type="range" min="0" max="100" step="1" value="50" aria-label="对比位置">
+      </div>
+      <p id="viewer-note" class="hint viewer-note"></p>
+    </section>
+
+    <section id="settings" class="settings hidden">
+      <div class="settings-head">
+        <h2>设置</h2>
+        <button id="settings-close" class="icon" aria-label="返回">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>生成渠道</h3>
+          <span id="channel-lock" class="lock hidden">由配置文件锁定</span>
+        </div>
+        <div class="segmented" data-count="3" role="group" aria-label="生成渠道">
+          <button id="channel-aliyun-tab" class="seg active" data-channel="aliyun">百炼</button>
+          <button id="channel-openai-tab" class="seg" data-channel="openai">第三方 API</button>
+          <button id="channel-bfl-tab" class="seg" data-channel="bfl">FLUX</button>
+        </div>
+        <div id="channel-aliyun" class="channel-body">
+          <label for="workspace-id">业务空间 ID<input id="workspace-id" autocomplete="off" placeholder="workspace_xxx"></label>
+          <label for="api-key">API Key<input id="api-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显"></label>
+        </div>
+        <div id="channel-openai" class="channel-body hidden">
+          <label for="base-url">服务地址<input id="base-url" autocomplete="off" placeholder="https://xxx.com/v1"></label>
+          <label for="openai-key">API Key<input id="openai-key" type="password" autocomplete="off" placeholder="输入后保存，不在面板回显"></label>
+          <label for="openai-model">模型<select id="openai-model"></select></label>
+          <label id="openai-model-custom-wrap" class="hidden" for="openai-model-custom">自定义模型名<input id="openai-model-custom" autocomplete="off" placeholder="渠道文档里的模型 ID"></label>
+          <label for="openai-size-mode">尺寸模式<select id="openai-size-mode"><option value="pixels">像素尺寸（gpt-image 系）</option><option value="tier">档位 1K/2K/4K（Gemini 系）</option></select></label>
+          <label for="channel-name">显示名称 · 可留空<input id="channel-name" autocomplete="off" placeholder="默认显示「第三方 API」"></label>
+        </div>
+        <div id="channel-bfl" class="channel-body hidden">
+          <label for="bfl-key">API Key<input id="bfl-key" type="password" autocomplete="off" placeholder="bfl_ 开头，输入后保存，不在面板回显"></label>
+          <label for="bfl-model">文生图模型<select id="bfl-model"></select></label>
+          <label id="bfl-model-custom-wrap" class="hidden" for="bfl-model-custom">自定义模型名<input id="bfl-model-custom" autocomplete="off" placeholder="BFL 文档里的模型 ID"></label>
+          <label for="bfl-name">显示名称 · 可留空<input id="bfl-name" autocomplete="off" placeholder="默认显示「FLUX」"></label>
+          <label for="bfl-base-url">服务地址 · 留空用官方<input id="bfl-base-url" autocomplete="off" placeholder="https://api.bfl.ai"></label>
+          <p class="hint">扩图和选区编辑不需要选模型：BFL 各有一个专用端点，模型只管文生图。</p>
+        </div>
+        <div class="channel-actions">
+          <button id="save-channel" class="primary">保存</button>
+          <button id="test-channel" class="secondary">测试连通</button>
+        </div>
+        <p id="channel-status" class="status"></p>
+        <p id="test-status" class="status"></p>
+        <p class="hint">API Key 存在 Windows 凭据管理器，不写进配置文件。</p>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>本地服务</h3>
+          <button id="start-service" class="mini">启动服务</button>
+        </div>
+        <p id="settings-status" class="status"></p>
+        <details class="manual-token">
+          <summary>服务起不来？手填连接码</summary>
+          <label for="client-token">连接码<input id="client-token" type="password" autocomplete="off" placeholder="服务启动窗口显示"></label>
+          <button id="save-token" class="secondary">使用此连接码</button>
+        </details>
+      </div>
+      <div class="group">
+        <div class="group-head">
+          <h3>外观</h3>
+        </div>
+        <div id="theme-switch" class="segmented" data-count="4" role="group" aria-label="界面主题">
+          <button class="seg active" data-theme-value="auto">自动</button>
+          <button class="seg" data-theme-value="dark">深色</button>
+          <button class="seg" data-theme-value="ps">PS 灰</button>
+          <button class="seg" data-theme-value="light">浅色</button>
+        </div>
+        <p class="hint">自动跟随系统外观。PS 灰与 Photoshop 面板同色，并排时看不出拼接。</p>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="dk-bar" id="dk-bar">
+    <div class="dk-head" id="dk-toggle"><b>演示控制台</b><span>点我收起</span></div>
+    <div class="dk-body">
+      <div class="dk-row"><i>生成结果</i><div class="dk-seg" data-group="result">
+        <button data-v="ok" class="on">成功</button><button data-v="timeout">超时</button><button data-v="size">尺寸被拒</button></div></div>
+      <div class="dk-row"><i>生成耗时</i><div class="dk-seg" data-group="speed">
+        <button data-v="fast">5 秒</button><button data-v="slow" class="on">20 秒</button></div></div>
+      <div class="dk-row"><i>渠道状态</i><div class="dk-seg" data-group="channel">
+        <button data-v="ready" class="on">已配置</button><button data-v="nokey">未填 Key</button><button data-v="locked">已锁定</button></div></div>
+      <div class="dk-row"><i>本地服务</i><div class="dk-seg" data-group="service">
+        <button data-v="online" class="on">在线</button><button data-v="offline">未启动</button></div></div>
+    </div>
+    <div class="dk-note">用的是真实面板代码：panel.css / panel.js / channel-view.js / main.js。只有 Photoshop 与本地服务是模拟的，不会联网、不花钱。</div>
+  </div>
+  </div>
+
+  <script src="../hosts/cep/js/local-service.js"></script>
+
+  <script>
+    /* ───────────────────────── 模拟层 ─────────────────────────
+     * 只替换「和 Photoshop 通信」与「和本地服务通信」这两件事。
+     * 控制器、渲染、计时、占位、渠道视图全部跑真实代码。 */
+    (function () {
+      'use strict';
+
+      // URL 参数可以直接把预览停在某个状态，方便截图、也方便把「复现链接」发给别人：
+      //   ?result=timeout   ?channel=nokey   ?service=offline   ?speed=fast
+      //   ?mode=expand      ?auto=1&delay=600（自动切模式并点生成）
+      var q = {};
+      (location.search.replace(/^\?/, '').split('&')).forEach(function (pair) {
+        if (!pair) return;
+        var kv = pair.split('=');
+        q[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || '');
+      });
+
+      var demo = {
+        result: q.result || 'ok',                                   // ok | timeout | size
+        durationMs: q.speed === 'fast' ? 5000 : 20000,
+        channelMode: q.channel || 'ready',                          // ready | nokey | locked
+        serviceOnline: q.service !== 'offline'
+      };
+
+      // Photoshop 文档的假数据：2606×2560 画布，无选区（对应扩图场景）
+      var DOC = { width: 2606, height: 2560, resolution: 300, build: 'mock' };
+
+      function poster(variant) {
+        var sets = [
+          ['#2f4d78', '#d9bda8', '#fff0ce', '#5d818a', '#2c4f62', '#152f42'],
+          ['#3c3057', '#dfb0a0', '#ffe4ae', '#587b86', '#294757', '#122936'],
+          ['#1e3b4e', '#c9a48c', '#ffd79c', '#4a7680', '#23404d', '#0d2230']
+        ];
+        var c = sets[variant % sets.length];
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="600" viewBox="0 0 720 600">'
+          + '<defs><linearGradient id="s" x2="0" y2="1"><stop stop-color="' + c[0] + '"/><stop offset="1" stop-color="' + c[1] + '"/></linearGradient></defs>'
+          + '<rect width="720" height="600" fill="url(#s)"/>'
+          + '<circle cx="500" cy="176" r="66" fill="' + c[2] + '" opacity=".92"/>'
+          + '<path d="M0 356 Q180 310 372 372 T720 338 V600 H0" fill="' + c[3] + '"/>'
+          + '<path d="M0 438 Q225 384 450 440 T720 406 V600 H0" fill="' + c[4] + '"/>'
+          + '<path d="M0 534 Q200 490 384 534 T720 498 V600 H0" fill="' + c[5] + '"/>'
+          + '<text x="28" y="566" font-family="system-ui" font-size="17" fill="#ffffff" opacity=".34">候选 ' + (variant + 1) + '</text>'
+          + '</svg>';
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      }
+
+      // 「原图」：真实面板里这里是 PS 抓下来的底稿（服务端压成缩小版回给面板）。
+      // 预览里给同一场景的低饱和版本，滑块拖起来才看得出前后差别。
+      function originPoster() {
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="600" viewBox="0 0 720 600">'
+          + '<rect width="720" height="600" fill="#4a4b4d"/>'
+          + '<rect y="356" width="720" height="244" fill="#3d3f42"/>'
+          + '<circle cx="500" cy="176" r="66" fill="#8c8d8a"/>'
+          + '<path d="M0 438 Q225 384 450 440 T720 406 V600 H0" fill="#34363a"/>'
+          + '<text x="28" y="566" font-family="system-ui" font-size="17" fill="#ffffff" opacity=".34">原图（演示）</text>'
+          + '</svg>';
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      }
+
+      function channelView() {
+        var openai = {
+          baseUrl: 'https://ai.comfly.org/v1',
+          model: 'gpt-image-2.6-flare',
+          sizeMode: 'pixels',
+          maxPixels: 16777216,
+          hasKey: demo.channelMode !== 'nokey'
+        };
+        return {
+          kind: demo.channelKind || 'openai',
+          locked: demo.channelMode === 'locked',
+          lockedNote: demo.channelMode === 'locked' ? '渠道已由 openai.env 的 STUDIO_PROVIDER 固定，改这里不会生效。' : '',
+          aliyun: { workspaceId: 'ws_demo_0001', hasKey: false },
+          openai: openai,
+          bfl: {
+            baseUrl: 'https://api.bfl.ai',
+            model: 'flux-pro-1.1',
+            name: '',
+            hasKey: demo.channelMode !== 'nokey'
+          }
+        };
+      }
+
+      var offline = function () {
+        return Promise.reject(new Error('无法连接本地服务，请启动 AI 图像工坊 本地服务后重试。'));
+      };
+
+      // ── 假 Photoshop ──
+      function CSInterface() {}
+      CSInterface.prototype.addEventListener = function (name, fn) { this._listeners = this._listeners || {}; this._listeners[name] = fn; };
+      CSInterface.prototype.getSystemPath = function () { return '/demo'; };
+      CSInterface.prototype.evalScript = function (script, cb) { setTimeout(function () { cb('{}'); }, 10); };
+      window.CSInterface = CSInterface;
+      window.cep = { fs: {}, encoding: { Base64: 'base64' } };
+
+      window.StudioHost = {
+        createHost: function () {
+          var disposed = 0;
+          return {
+            inspect: function () {
+              return Promise.resolve({ width: DOC.width, height: DOC.height, resolution: DOC.resolution, build: DOC.build, selectionBounds: null });
+            },
+            capture: function (operation) {
+              // 扩图：只交画面不带 mask，让控制器去问服务端「透明边能推出多大比例」，
+              // 这正是真实链路里最容易出错、也最值得看的一段。
+              var hasMask = operation !== 'expand';
+              return Promise.resolve({
+                image: poster(0),
+                mask: hasMask ? poster(1) : null,
+                maskPath: hasMask ? '/demo/mask.png' : null,
+                context: {
+                  documentId: 42, width: DOC.width, height: DOC.height,
+                  layerBounds: { left: 0, top: 0, right: 2606, bottom: 2304 },
+                  selectionBounds: hasMask ? { left: 620, top: 480, right: 1720, bottom: 1580 } : null
+                }
+              });
+            },
+            // 扩图默认落成独立图层（原图层不动），预览也按这个真实行为走，
+            // 否则截图里看到的还是旧的「已合并到原图层」。
+            apply: function () { return Promise.resolve({ documentId: 42, layerId: 7, layerName: 'AI 图像工坊 扩图', separate: true, merged: false, trimmed: true, operation: 'expand' }); },
+            openSeparate: function () { return Promise.resolve({ documentId: 43 }); },
+            dispose: function () { disposed++; }
+          };
+        }
+      };
+
+      // ── 假本地服务 ──
+      window.StudioService = {
+        createClient: function () {
+          var token = '';
+          var jobs = {};
+
+          function now() { return Date.now(); }
+
+          return {
+            setToken: function (value) {
+              var next = String(value == null ? '' : value).trim();
+              if (!next) throw new Error('连接码不能为空。');
+              token = next;
+            },
+            status: function () {
+              if (!demo.serviceOnline) return offline();
+              return Promise.resolve({ configured: demo.channelMode !== 'nokey', workspaceId: channelView().aliyun.workspaceId });
+            },
+            channel: function () {
+              if (!demo.serviceOnline) return offline();
+              return Promise.resolve(channelView());
+            },
+            saveChannel: function (payload) {
+              if (!demo.serviceOnline) return offline();
+              var view = channelView();
+              if (view.locked) return Promise.reject(new Error('渠道由配置文件锁定，无法在面板修改。'));
+              if (payload.kind === 'bfl') {
+                view.kind = 'bfl';
+                view.bfl.baseUrl = payload.baseUrl || 'https://api.bfl.ai';
+                view.bfl.model = payload.model || '';
+                view.bfl.name = payload.name || '';
+                if (payload.apiKey) view.bfl.hasKey = true;
+                return Promise.resolve(view);
+              }
+              if (payload.kind === 'openai') {
+                view.kind = 'openai';
+                view.openai.baseUrl = payload.baseUrl || view.openai.baseUrl;
+                view.openai.model = payload.model || view.openai.model;
+                view.openai.sizeMode = payload.sizeMode === 'tier' ? 'tier' : 'pixels';
+                if (payload.apiKey) view.openai.hasKey = true;
+                if (!payload.baseUrl) view.openai.baseUrl = '';
+              } else {
+                view.kind = 'aliyun';
+                view.aliyun.workspaceId = payload.workspaceId || '';
+                if (payload.apiKey) view.aliyun.hasKey = true;
+              }
+              return Promise.resolve(view);
+            },
+            // 预览里的「测试连通」是假的：只按填的地址和模型名给一个确定的结论，
+            // 好让人在演示里就能看到命中 / 未命中 / 连不上三种文案。
+            testChannel: function (payload) {
+              if (!demo.serviceOnline) return offline();
+              // BFL 的地址可以留空（官方就一个域名），演示里也照这个来。
+              if (payload.kind === 'bfl') {
+                if (/bad|invalid/i.test(payload.baseUrl || '')) return Promise.reject(new Error('连不上 api.bfl.ai（ENOTFOUND）：域名解析或端口没通。'));
+                return Promise.resolve({ ok: true, status: 200, probe: 'bfl-credits', credits: 1000, model: payload.model || 'flux-pro-1.1', modelFound: null, modelCount: 0, similar: [], latencyMs: 640 });
+              }
+              if (!payload.baseUrl) return Promise.reject(new Error('服务地址需要以 http:// 或 https:// 开头。'));
+              if (/bad|invalid/i.test(payload.baseUrl)) return Promise.reject(new Error('连不上这个地址（ENOTFOUND）：域名解析或端口没通。检查服务地址有没有写错、需不需要挂代理。'));
+              var known = ['gemini-3.1-flash-image', 'gpt-image-2.6-flare'];
+              return Promise.resolve({ ok: true, model: payload.model, modelFound: known.indexOf(payload.model) >= 0, modelCount: 42, similar: known, latencyMs: 118 });
+            },
+            inspect: function (capture) {
+              if (!demo.serviceOnline) return offline();              // 扩图无 mask：按画布透明边推导倍率（对应截图里的 1.272）
+              if (!capture.mask) return Promise.resolve({ expandScales: { top: 1, right: 1.272, bottom: 1, left: 1 } });
+              return Promise.resolve({ selectionKind: 'inside', selectionBounds: { left: 620, top: 480, right: 1720, bottom: 1580 } });
+            },
+            start: function (job) {
+              if (!demo.serviceOnline) return offline();
+              if (demo.channelMode === 'nokey' && !channelView().openai.hasKey) {
+                var missing = new Error('还没配置生成渠道，请打开设置页填写后再试。');
+                missing.code = 'CHANNEL_NOT_CONFIGURED';
+                return Promise.reject(missing);
+              }
+              var id = 'job-' + Math.random().toString(36).slice(2, 10);
+              // 纯生成没有底稿，服务端会明说 hasOrigin:false，面板据此只显示单图。
+              jobs[id] = { jobId: id, startedAt: now(), status: 'running', resultCount: job.n || 1, errorCode: null, errorMessage: null, hasOrigin: job.operation !== 'generate' };
+              return Promise.resolve({ jobId: id });
+            },
+            get: function (id) {
+              if (!demo.serviceOnline) return offline();
+              var job = jobs[id];
+              if (!job) return Promise.reject(new Error('任务不存在。'));
+              var elapsed = now() - job.startedAt;
+              if (elapsed < demo.durationMs) return Promise.resolve({ jobId: id, status: 'running', resultCount: 0, errorCode: null, hasOrigin: job.hasOrigin });
+              if (demo.result === 'timeout') {
+                job.status = 'failed'; job.errorCode = 'PROVIDER_TIMEOUT';
+                job.errorMessage = '生成超时：接口 ' + Math.round(demo.durationMs / 1000) + ' 秒内没有返回结果。画布越大越慢，可以调小扩图比例，或在设置里换更快的渠道。';
+                return Promise.resolve({ jobId: id, status: 'failed', resultCount: 0, errorCode: job.errorCode, errorMessage: job.errorMessage });
+              }
+              if (demo.result === 'size') {
+                job.status = 'failed'; job.errorCode = 'SIZE_REJECTED';
+                job.errorMessage = '接口拒绝了 3074x2560 这个输出尺寸，请换一个模型或调整画布大小。';
+                return Promise.resolve({ jobId: id, status: 'failed', resultCount: 0, errorCode: job.errorCode, errorMessage: job.errorMessage });
+              }
+              job.status = 'succeeded'; job.resultCount = job.resultCount;
+              return Promise.resolve({ jobId: id, status: 'succeeded', resultCount: job.resultCount, errorCode: null, hasOrigin: job.hasOrigin });
+            },
+            result: function (id, index) { return Promise.resolve(poster(index)); },
+            // 原图缩小版：真实链路由服务端在提交时压好，这里直接给一张低饱和的同场景图。
+            origin: function () { return Promise.resolve(originPoster()); },
+            cancel: function (id) {
+              if (jobs[id]) jobs[id].status = 'cancelled';
+              return Promise.resolve({ jobId: id, status: 'cancelled' });
+            }
+          };
+        }
+      };
+
+      // ── 演示控制台 ──
+      var bar = document.getElementById('dk-bar');
+      var barHint = bar.querySelector('.dk-head span');
+      // 窄屏时控制台是浮层，会盖住「生成预览」，所以默认收起来，只留一条标题。
+      if (window.innerWidth <= 840) bar.classList.add('collapsed');
+      function syncBarHint() { barHint.textContent = bar.classList.contains('collapsed') ? '点我展开' : '点我收起'; }
+      syncBarHint();
+      document.getElementById('dk-toggle').onclick = function () { bar.classList.toggle('collapsed'); syncBarHint(); };
+      // 设置页是 position:fixed 铺满窗口的，会把留白一起盖住，控制台这时会压在表单上。
+      // 打开设置页就自动收起，只留一条标题。
+      function collapseBar() {
+        if (!bar.classList.contains('collapsed')) { bar.classList.add('collapsed'); syncBarHint(); }
+      }
+      document.getElementById('settings-toggle').addEventListener('click', collapseBar);
+      document.getElementById('provider').addEventListener('click', collapseBar);
+
+      // 让按钮的选中态和 URL 参数保持一致，否则「链接说的是超时、按钮亮的是成功」。
+      function mark(groupName, value) {
+        var buttons = document.querySelectorAll('.dk-seg[data-group="' + groupName + '"] button');
+        for (var i = 0; i < buttons.length; i++) buttons[i].classList.toggle('on', buttons[i].getAttribute('data-v') === value);
+      }
+      mark('result', demo.result === 'ok' ? 'ok' : demo.result);
+      mark('speed', demo.durationMs === 5000 ? 'fast' : 'slow');
+      mark('channel', demo.channelMode);
+      mark('service', demo.serviceOnline ? 'online' : 'offline');
+
+      var groups = document.querySelectorAll('.dk-seg');
+      for (var i = 0; i < groups.length; i++) {
+        (function (group) {
+          group.addEventListener('click', function (event) {
+            var target = event.target;
+            if (!target || target.tagName !== 'BUTTON') return;
+            var buttons = group.querySelectorAll('button');
+            for (var j = 0; j < buttons.length; j++) buttons[j].classList.toggle('on', buttons[j] === target);
+            var value = target.getAttribute('data-v');
+            var name = group.getAttribute('data-group');
+            if (name === 'result') demo.result = value === 'ok' ? 'ok' : value;
+            if (name === 'speed') demo.durationMs = value === 'fast' ? 5000 : 20000;
+            if (name === 'channel') demo.channelMode = value;
+            if (name === 'service') demo.serviceOnline = value === 'online';
+            // 顶部状态条只在 focus 时才重算，这里手动触发一次，让改动能立刻反映上去
+            window.dispatchEvent(new Event('focus'));
+          });
+        }(groups[i]));
+      }
+
+      // 浏览器里没有 child_process，真实启动器只会回「不能启动」，那样预览里
+      // 永远是「点此查看」。这里换成一个会真的「起来」的假启动器：
+      // 点一下等 0.9 秒，状态条从「未启动」变绿，正好演示换电脑后第一次打开的样子。
+      window.StudioLocalService = {
+        createLauncher: function () {
+          var token = 'demo-preview-token'.replace(/[^A-Za-z0-9_-]/g, 'x');
+          while (token.length < 43) token += 'x';
+          return {
+            readToken: function () { return token; },
+            canLaunch: function () { return true; },
+            ensure: function () {
+              if (demo.serviceOnline) return Promise.resolve({ started: false, token: token });
+              return new Promise(function (resolve) {
+                setTimeout(function () {
+                  demo.serviceOnline = true;
+                  if (typeof mark === 'function') mark('service', 'online');
+                  resolve({ started: true, token: token });
+                }, 900);
+              });
+            }
+          };
+        }
+      };
+    }());
+  </script>
+
+  <script src="../hosts/cep/js/theme.js"></script>
+  <script src="../hosts/cep/js/panel.js"></script>
+  <script src="../hosts/cep/js/channel-view.js"></script>
+  <script src="../hosts/cep/js/compare-view.js"></script>
+  <script src="../hosts/cep/js/main.js"></script>
+
+  <script>
+    /* 自动驱动：只为了让「状态链接」可复现，正常使用时不传参数即可。 */
+    (function () {
+      var m = /[?&]mode=(edit|expand|generate)/.exec(location.search);
+      if (m) {
+        var button = document.querySelector('.mode[data-mode="' + m[1] + '"]');
+        if (button) button.click();
+      }
+      if (/[?&]settings=1/.test(location.search)) document.getElementById('settings-toggle').click();
+      // ?tab=bfl|openai|aliyun：自动切到某个渠道页，方便截图核对三块表单各自的样子。
+      // 要延时：设置页的 apply() 是异步回填的，它会按已保存的 kind 再选一次 tab，
+      // 立刻点会被它覆盖回去，看起来像「点了没反应」。
+      var tabPick = /[?&]tab=(bfl|openai|aliyun)/.exec(location.search);
+      if (tabPick) {
+        setTimeout(function () {
+          var tabNode = document.getElementById('channel-' + tabPick[1] + '-tab');
+          if (tabNode) tabNode.click();
+          // ?test=1 再自动点一下「测试连通」：验证结果那段长文案在窄面板里怎么折行。
+          if (/[?&]test=1/.test(location.search)) {
+            setTimeout(function () {
+              var btn = document.getElementById('test-channel');
+              if (btn) btn.click();
+            }, 500);
+          }
+        }, 350);
+      }
+      // ?start=1：自动点顶部状态条，演示「换电脑第一次打开 → 点一下就起来」这条路径。
+      if (/[?&]start=1/.test(location.search)) {
+        setTimeout(function () { document.getElementById('provider').click(); }, 400);
+      }
+      if (/[?&]auto=1/.test(location.search)) {
+        var delay = Number((/[?&]delay=(\d+)/.exec(location.search) || [0, 600])[1]);
+        setTimeout(function () {
+          document.getElementById('prompt').value = '向右延伸海边的日落天空';
+          document.getElementById('run').click();
+        }, delay);
+      }
+      // ?apply=1：结果出来后自动点第一张「应用候选」，用来验证回贴那一整条链路。
+      // 用 :last-of-type 取那张按钮：卡片里现在还有一个「放大」按钮，取首个会点到预览层。
+      if (/[?&]apply=1/.test(location.search)) {
+        var tries = 0;
+        var timer = setInterval(function () {
+          var target = document.querySelector('.preview button:last-of-type');
+          if (target) { clearInterval(timer); target.click(); }
+          else if (++tries > 300) clearInterval(timer);
+        }, 100);
+      }
+      // ?viewer=1：结果出来后自动点开第一张图，用来截图/复现大图对比层。
+      if (/[?&]viewer=1/.test(location.search)) {
+        var vtries = 0;
+        var vtimer = setInterval(function () {
+          var target = document.querySelector('.preview img');
+          if (target && target.getAttribute('src')) { clearInterval(vtimer); target.click(); }
+          else if (++vtries > 300) clearInterval(vtimer);
+        }, 100);
+      }
+      // ?noconsole=1：收起演示控制台。截图核对面板本身时用它——控制台是浮层，
+      // 窄窗口下会盖住结果区和覆盖层，看到的就不是真实面板的样子了。
+      if (/[?&]noconsole=1/.test(location.search)) {
+        var bar = document.getElementById('dk-bar');
+        if (bar) bar.style.display = 'none';
+      }
+    }());
+  </script>
+</body>
+</html>

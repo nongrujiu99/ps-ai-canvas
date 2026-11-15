@@ -122,8 +122,35 @@ test('capture refuses a document changed between asynchronous pixel reads', asyn
   const original = s.imaging.getSelection;
   s.imaging.getSelection = async (...args) => {
     const result = await original(...args);
-    s.doc.activeHistoryState = { id: 10 };
+    s.doc.selection = { bounds: { left: 0, top: 0, right: 1, bottom: 1 } };
     return result;
   };
   await assert.rejects(createHost(s).capture('editMasked'), { code: 'STALE_DOCUMENT' });
+});
+
+test('a new history state from switching layers does not invalidate the result', async () => {
+  // 历史记录 id 每切一次图层就会多一条。拿它判断「文档变了」会让等待期间
+  // 的普通操作全部变成 STALE_DOCUMENT，结果被迫另开文档——CEP 侧踩过这个坑。
+  const s = scene();
+  const host = createHost(s);
+  const capture = await host.capture('editMasked');
+  s.doc.activeHistoryState = { id: 99 };
+  const result = await host.apply({ data: Uint8Array.from(Array(16).fill(255)), width: 2, height: 2 }, capture);
+  assert.equal(result.layerId, 55);
+});
+
+test('context carries the active layer bounds used to derive expansion scales', async () => {
+  const s = scene();
+  s.doc.activeLayers = [{ id: 1, bounds: { left: 10, top: 20, right: 90, bottom: 120 } }];
+  const ctx = await createHost(s).inspect();
+  assert.deepEqual(ctx.layerBounds, { left: 10, top: 20, right: 90, bottom: 120 });
+});
+
+test('apply accepts a lazy preview and resolves raw pixels itself', async () => {
+  const s = scene();
+  const host = createHost(s);
+  const capture = await host.capture('editMasked');
+  const preview = { preview: 'data:image/png;base64,AA==', loadRaw: async () => ({ data: Uint8Array.from(Array(16).fill(255)), width: 2, height: 2 }) };
+  const result = await host.apply(preview, capture);
+  assert.equal(result.layerId, 55);
 });

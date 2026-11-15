@@ -1,4 +1,4 @@
-param([string]$OutputRoot)
+﻿param([string]$OutputRoot)
 
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))

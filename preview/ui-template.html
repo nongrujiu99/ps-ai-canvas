@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI 基准模板 · 活文档</title>
+<!-- 直接引用真实源样式：改 hosts/shared/panel.css 并同步副本后，本页自动跟着变。
+     这样模板永远不会和真实面板分叉。 -->
+<link rel="stylesheet" href="../hosts/cep/css/panel.css">
+<style>
+/* ⚠ 以下样式仅用于「展示页」自身排版（色板网格、分区标签），不属于面板规范。 */
+.gallery{padding:14px 14px 40px;max-width:520px;margin:0 auto}
+.gsec{margin:0 0 26px}
+.gsec>h2{font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:.06em;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.gnote{font-size:11px;color:var(--text-mute);margin:0 0 12px;line-height:1.6;overflow-wrap:anywhere}
+.gnote code{font-size:10.5px;color:var(--text-dim);word-break:break-all}
+.swatches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-gap:6px}
+.sw{display:flex;align-items:center;min-width:0;border:1px solid var(--line);border-radius:7px;padding:7px 9px;background:var(--surface)}
+.sw i{flex:none;width:16px;height:16px;border-radius:4px;border:1px solid var(--line-strong);margin-right:8px}
+.sw>div{min-width:0}
+.sw b{display:block;font-size:11px;font-weight:600;color:var(--text);letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sw small{display:block;font-size:10px;color:var(--text-mute);font-variant-numeric:tabular-nums;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.typerow{display:flex;align-items:baseline;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);grid-gap:10px}
+.typerow:last-child{border-bottom:0}
+.typerow span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.typerow small{flex:none;font-size:10px;color:var(--text-mute);font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.gsec>h2{overflow-wrap:anywhere}
+/* 设置页在真实面板里是 fixed 覆盖层，展示页里降级为普通块，方便同屏对照 */
+.embed{position:static;border:1px solid var(--line);border-radius:9px;padding:14px;background:var(--surface)}
+</style>
+</head>
+<body>
+<div class="gallery">
+
+  <header class="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div class="brand-text">
+        <h1>UI 基准模板</h1>
+        <div class="document">三套主题 · 石墨 / PS 灰 / 浅色，单一琥珀 · 活文档，随 panel.css 同步</div>
+      </div>
+    </div>
+  </header>
+
+  <p class="gnote">本页是 <b>活文档</b>：所有组件都直接吃 <code>hosts/shared/panel.css</code> 的规则。
+  规范条文见 <code>docs/ui-style-guide.md</code>，可复制骨架见 <code>docs/ui-template/skeleton.html</code>。</p>
+
+  <div id="doc-theme" class="segmented" data-count="4" role="group" aria-label="预览主题">
+    <button class="seg active" data-doc-theme="auto">自动</button>
+    <button class="seg" data-doc-theme="dark">深色</button>
+    <button class="seg" data-doc-theme="ps">PS 灰</button>
+    <button class="seg" data-doc-theme="light">浅色</button>
+  </div>
+  <p class="gnote">切换上面四档，整页（包括色板里的实时色值）会跟着变。面板里的入口在设置页「外观」。</p>
+
+  <!-- ── 色板 ───────────────────────────────────────────── -->
+  <section class="gsec">
+    <h2>① 色板 · 唯一彩色是琥珀</h2>
+    <p class="gnote">色值由脚本从 <code>panel.css</code> 实时读取，三套主题都准。
+    上面切的那一档只作用于本页；真实面板的入口在设置页「外观」，选择会记住。</p>
+    <div class="swatches">
+      <div class="sw"><i style="background:var(--bg)"></i><div><b>--bg</b><small data-token="--bg" data-use="面板底">—</small></div></div>
+      <div class="sw"><i style="background:var(--surface)"></i><div><b>--surface</b><small data-token="--surface" data-use="输入/卡片">—</small></div></div>
+      <div class="sw"><i style="background:var(--surface-2)"></i><div><b>--surface-2</b><small data-token="--surface-2" data-use="分段容器">—</small></div></div>
+      <div class="sw"><i style="background:var(--surface-3)"></i><div><b>--surface-3</b><small data-token="--surface-3" data-use="选中/次按钮">—</small></div></div>
+      <div class="sw"><i style="background:var(--line)"></i><div><b>--line</b><small data-token="--line" data-use="细线">—</small></div></div>
+      <div class="sw"><i style="background:var(--line-strong)"></i><div><b>--line-strong</b><small data-token="--line-strong" data-use="控件描边">—</small></div></div>
+      <div class="sw"><i style="background:var(--accent)"></i><div><b>--accent</b><small data-token="--accent" data-use="强调">—</small></div></div>
+      <div class="sw"><i style="background:var(--accent-hover)"></i><div><b>--accent-hover</b><small data-token="--accent-hover" data-use="主按钮悬停">—</small></div></div>
+      <div class="sw"><i style="background:var(--focus-line)"></i><div><b>--focus-line</b><small data-token="--focus-line" data-use="焦点线">—</small></div></div>
+      <div class="sw"><i style="background:var(--preview-bg)"></i><div><b>--preview-bg</b><small data-token="--preview-bg" data-use="图片底">—</small></div></div>
+      <div class="sw"><i style="background:var(--ok)"></i><div><b>--ok</b><small data-token="--ok" data-use="成功">—</small></div></div>
+      <div class="sw"><i style="background:var(--warn)"></i><div><b>--warn</b><small data-token="--warn" data-use="警告">—</small></div></div>
+      <div class="sw"><i style="background:var(--err)"></i><div><b>--err</b><small data-token="--err" data-use="错误">—</small></div></div>
+      <div class="sw"><i style="background:var(--text)"></i><div><b>--text</b><small data-token="--text" data-use="正文">—</small></div></div>
+      <div class="sw"><i style="background:var(--text-bright)"></i><div><b>--text-bright</b><small data-token="--text-bright" data-use="标题">—</small></div></div>
+      <div class="sw"><i style="background:var(--text-dim)"></i><div><b>--text-dim</b><small data-token="--text-dim" data-use="次要字">—</small></div></div>
+    </div>
+  </section>
+
+  <!-- ── 字号阶梯 ───────────────────────────────────────── -->
+  <section class="gsec">
+    <h2>② 字号阶梯 · 只有 400 / 600 两档字重</h2>
+    <div class="typerow"><span style="font-size:14px;font-weight:600;color:var(--text-bright)">面板标题 14 / 600</span><small>h1 · h2</small></div>
+    <div class="typerow"><span style="font-size:13px">正文基准 13 / 400</span><small>body · textarea</small></div>
+    <div class="typerow"><span style="font-size:12.5px">次正文 12.5</span><small>mode · 设置输入</small></div>
+    <div class="typerow"><span style="font-size:12px">表格行 12</span><small>advanced · seg</small></div>
+    <div class="typerow"><span style="font-size:11.5px">辅助 11.5</span><small>status · summary · note</small></div>
+    <div class="typerow"><span style="font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:.04em">字段标签 11 / 600</span><small>label · h3</small></div>
+    <div class="typerow"><span style="font-size:10px;letter-spacing:.08em">角标 10</span><small>.idx · .lock</small></div>
+  </section>
+
+  <!-- ── 页头 / 信号行 / 分段 ───────────────────────────── -->
+  <section class="gsec">
+    <h2>③ 页头 · 渠道信号行 · 模式分段</h2>
+    <header class="top">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <h1>AI 图像工坊</h1>
+          <div class="document">2516 × 2560 像素 · RGB / 8 位</div>
+        </div>
+      </div>
+      <button class="icon" aria-label="设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 6.9l2.6 1.5M17.2 15.6l2.6 1.5M19.8 6.9l-2.6 1.5M6.8 15.6l-2.6 1.5"/></svg>
+      </button>
+    </header>
+
+    <button class="provider ok" type="button">
+      <span class="provider-label">百炼</span>
+      <span class="provider-chip">wanx2.1-imageedit</span>
+      <span class="provider-go" aria-hidden="true">›</span>
+    </button>
+    <button class="provider warn" type="button">
+      <span class="provider-label">本地服务未启动</span>
+      <span class="provider-chip">点此启动</span>
+      <span class="provider-go" aria-hidden="true">›</span>
+    </button>
+    <button class="provider error" type="button">
+      <span class="provider-label">第三方 API</span>
+      <span class="provider-chip">未填 API Key</span>
+      <span class="provider-go" aria-hidden="true">›</span>
+    </button>
+
+    <nav class="modes" aria-label="操作模式">
+      <button class="mode active">选区编辑</button>
+      <button class="mode">扩图</button>
+      <button class="mode">生成</button>
+    </nav>
+  </section>
+
+  <!-- ── 字段 / 倍率十字 / 折叠 / 主操作 / 状态 ──────────── -->
+  <section class="gsec">
+    <h2>④ 工作区 · 字段 / 倍率十字 / 参数行 / 高级折叠 / 主操作</h2>
+    <div class="field-head">
+      <label>画面描述</label>
+      <span class="hint-chip">可留空</span>
+    </div>
+    <textarea rows="3" placeholder="例如：把选区里的杯子换成白色陶瓷花瓶"></textarea>
+
+    <div class="directions">
+      <div class="note">倍率从透明边自动推算（1 = 不扩）。<br>描述只写材质和光线，别列物体。</div>
+      <!-- 十字布局靠 label[for="top|right|bottom|left"] 钉住，for 必须原样保留 -->
+      <div class="scale-grid">
+        <label for="top">上 <input id="top" type="number" value="1"></label>
+        <label for="right">右 <input id="right" type="number" value="1.5"></label>
+        <label for="bottom">下 <input id="bottom" type="number" value="1"></label>
+        <label for="left">左 <input id="left" type="number" value="1"></label>
+      </div>
+
+      <!-- 推导成功后框体不变，只有数字变灰 + 只读。这一格是给「为什么真机上看到的不一样」准备的对照 -->
+      <div class="note">推导成功时框体不变，数字变灰且不能改（读数是算出来的）。</div>
+      <div class="scale-grid derived">
+        <label for="top">上 <input type="number" value="1" readonly></label>
+        <label for="right">右 <input type="number" value="1.27" readonly></label>
+        <label for="bottom">下 <input type="number" value="1.186" readonly></label>
+        <label for="left">左 <input type="number" value="1" readonly></label>
+      </div>
+    </div>
+
+    <div class="param-row">
+      <label><span>候选数量</span><select><option>2 张</option><option>1 张</option></select></label>
+      <label><span>随机种子</span><input type="number" placeholder="留空" title="留空为随机"></label>
+      <label class="wide"><span>输出尺寸</span><select><option>1024 × 1024</option><option>2048 × 1536</option></select></label>
+    </div>
+
+    <details open>
+      <summary>更多选项</summary>
+      <div class="advanced-fields">
+        <label><input type="checkbox" checked><span>整张画面重绘</span></label>
+        <label><span>修改幅度</span><input type="range" min="0" max="1" step="0.05" value="0.6"></label>
+        <label><input type="checkbox"><span>额外请求不再确认</span></label>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button class="primary">生成预览</button>
+      <button class="quiet">停止</button>
+    </div>
+
+    <p class="status">正在提交任务 · 已等待 8 秒</p>
+    <p class="status ok">预览已就绪 · 2 张候选</p>
+    <p class="status warn">输出尺寸 1280 × 720，与画布比例不一致</p>
+    <p class="status error">选区内没有可编辑像素，请重新框选</p>
+  </section>
+
+  <!-- ── 结果卡 / 占位 ─────────────────────────────────── -->
+  <section class="gsec">
+    <h2>⑤ 结果卡 · 生成占位</h2>
+    <div class="previews" data-count="2">
+      <div class="preview">
+        <span class="idx">01</span>
+        <div style="height:130px;background:var(--preview-bg);display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:11px">候选图 1</div>
+        <button>应用候选</button>
+      </div>
+      <div class="preview">
+        <span class="idx">02</span>
+        <div style="height:130px;background:var(--preview-bg);display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:11px">候选图 2</div>
+        <button>应用候选</button>
+      </div>
+    </div>
+    <div class="preview-placeholder">
+      <div class="ph-ring"></div>
+      <div class="ph-label">正在生成</div>
+      <div class="ph-note">通常 15 ~ 30 秒</div>
+    </div>
+  </section>
+
+  <!-- ── 按钮与控件全家桶 ───────────────────────────────── -->
+  <section class="gsec">
+    <h2>⑥ 按钮与控件 · 五档按钮 + 控件各态</h2>
+    <div class="actions">
+      <button class="primary">主操作 primary</button>
+      <button class="quiet">停止 quiet</button>
+    </div>
+    <div class="actions" style="margin-top:8px">
+      <button class="secondary">次要 secondary</button>
+      <button class="primary" disabled>禁用 primary</button>
+    </div>
+    <div class="actions" style="margin-top:8px">
+      <button class="secondary" disabled>禁用 secondary</button>
+      <button class="mini">mini</button>
+      <button class="icon" aria-label="图标按钮">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 6.9l2.6 1.5M17.2 15.6l2.6 1.5M19.8 6.9l-2.6 1.5M6.8 15.6l-2.6 1.5"/></svg>
+      </button>
+      <span class="lock">lock 徽章</span>
+    </div>
+    <div class="advanced-fields" style="margin-top:10px">
+      <label><input type="checkbox"><span>未选中复选框</span></label>
+      <label><input type="checkbox" checked><span>已选中复选框</span></label>
+      <label><span>禁用输入框</span><input type="number" value="1.5" disabled></label>
+    </div>
+    <p class="hint">hint · 说明性小字，只放「用户为什么该这么做」，不放技术细节。</p>
+  </section>
+
+  <!-- ── 设置页片段 ─────────────────────────────────────── -->
+  <section class="gsec">
+    <h2>⑦ 设置页 · 只分两组（此处为普通块，真实面板是覆盖层）</h2>
+    <section class="settings embed">
+      <div class="settings-head">
+        <h2>设置</h2>
+        <button class="icon" aria-label="返回">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="group">
+        <div class="group-head">
+          <h3>生成渠道</h3>
+          <span class="lock">由配置文件锁定</span>
+        </div>
+        <div class="segmented" role="group">
+          <button class="seg active">百炼</button>
+          <button class="seg">第三方 API</button>
+        </div>
+        <div class="channel-body">
+          <label>业务空间 ID<input placeholder="workspace_xxx"></label>
+          <label>API Key<input type="password" placeholder="输入后保存，不在面板回显"></label>
+        </div>
+        <div class="channel-actions">
+          <button class="primary">保存</button>
+          <button class="secondary">测试连通</button>
+        </div>
+        <p class="status ok">已保存到系统凭据库</p>
+        <p class="hint">API Key 存在系统凭据库，不写进配置文件。</p>
+      </div>
+      <div class="group">
+        <div class="group-head">
+          <h3>本地服务</h3>
+          <button class="mini">启动</button>
+        </div>
+        <p class="status">服务未运行 · 127.0.0.1:32145</p>
+        <label>连接码<input type="password" placeholder="服务启动窗口显示"></label>
+        <button class="secondary">使用此连接码</button>
+      </div>
+    </section>
+  </section>
+
+  <p class="gnote">自检：把窗口拖到 280px 宽，不应出现横向滚动；键盘 Tab 走一遍，焦点处应有琥珀 2px 轮廓或 3px 光晕。</p>
+
+</div>
+<script>
+// 色值从真实源实时读取：换主题时这里跟着变，不会出现「标签写深色值、色块是浅色」的错位。
+(function () {
+  var root = document.documentElement;
+
+  function values() {
+    var cs = getComputedStyle(root);
+    var nodes = document.querySelectorAll('[data-token]');
+    for (var i = 0; i < nodes.length; i++) {
+      var v = cs.getPropertyValue(nodes[i].getAttribute('data-token')).trim();
+      nodes[i].textContent = v + ' · ' + nodes[i].getAttribute('data-use');
+    }
+  }
+
+  function paint(mode) {
+    var light = window.matchMedia && window.matchMedia('(prefers-color-scheme:light)').matches;
+    var actual = mode === 'auto' ? (light ? 'light' : 'dark') : mode;
+    if (actual === 'dark') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', actual);
+    var buttons = document.querySelectorAll('[data-doc-theme]');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].classList.toggle('active', buttons[i].getAttribute('data-doc-theme') === mode);
+    }
+    values();
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-doc-theme]');
+    if (btn) paint(btn.getAttribute('data-doc-theme'));
+  });
+
+  paint('auto');
+})();
+</script>
+</body>
+</html>

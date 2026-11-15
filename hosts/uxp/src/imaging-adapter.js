@@ -1,15 +1,34 @@
 'use strict';
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+// 查表用字符码而不是字符串：每 3 字节要 4 次索引，字符串索引每次都要建临时字符串，
+// UXP 的 JS 引擎上处理 5 MB 级 PNG 时这一项很显眼。改成一整块 CharCode 数组后
+// 每个分片只拼一次字符串，实测开销明显低。
+const codes = new Uint8Array(64);
+for (let i = 0; i < 64; i++) codes[i] = alphabet.charCodeAt(i);
+const PAD = 61; // '='
+
 function toBase64(bytes) {
   const parts = [];
-  let chunk = '';
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i], b = i + 1 < bytes.length ? bytes[i + 1] : 0, c = i + 2 < bytes.length ? bytes[i + 2] : 0;
-    chunk += alphabet[a >> 2] + alphabet[((a & 3) << 4) | (b >> 4)] + (i + 1 < bytes.length ? alphabet[((b & 15) << 2) | (c >> 6)] : '=') + (i + 2 < bytes.length ? alphabet[c & 63] : '=');
-    if (chunk.length >= 16384) { parts.push(chunk); chunk = ''; }
+  // 分片长度必须是 3 的倍数，否则跨分片的尾组会被多打一个 '='。
+  const chunkSize = 3 * 4096;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const end = Math.min(offset + chunkSize, bytes.length);
+    const out = new Array(Math.ceil((end - offset) / 3) * 4);
+    let p = 0;
+    for (let i = offset; i < end; i += 3) {
+      const a = bytes[i];
+      const hasB = i + 1 < end;
+      const hasC = i + 2 < end;
+      const b = hasB ? bytes[i + 1] : 0;
+      const c = hasC ? bytes[i + 2] : 0;
+      out[p++] = codes[a >> 2];
+      out[p++] = codes[((a & 3) << 4) | (b >> 4)];
+      out[p++] = hasB ? codes[((b & 15) << 2) | (c >> 6)] : PAD;
+      out[p++] = hasC ? codes[c & 63] : PAD;
+    }
+    parts.push(String.fromCharCode.apply(null, out));
   }
-  parts.push(chunk);
   return parts.join('');
 }
 

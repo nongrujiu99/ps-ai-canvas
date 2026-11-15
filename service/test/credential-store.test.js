@@ -13,7 +13,7 @@ test('Windows credential helper compiles and can read', { skip: process.platform
 
 test('Windows Credential Manager round-trips a disposable test credential', { skip: process.platform !== 'win32' }, () => {
   const script = path.join(__dirname, '..', 'scripts', 'wincred.ps1');
-  const target = `PSAI.Canvas.Test.${randomUUID()}`;
+  const target = `Studio.AiImg.Test.${randomUUID()}`;
   const run = (operation, input = '') => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, operation, '-Target', target], { input, encoding: 'utf8', windowsHide: true });
   try {
     const write = run('write', 'test-credential-非生产');

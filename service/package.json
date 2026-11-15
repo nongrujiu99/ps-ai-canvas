@@ -1,5 +1,5 @@
 {
-  "name": "ps-ai-local-service",
+  "name": "studio-local-service",
   "version": "0.1.0",
   "private": true,
   "description": "Local image service for the Photoshop AI canvas plugin",
@@ -8,7 +8,10 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "start": "node src/main.js"
+    "start": "node src/main.js",
+    "start:openai": "node scripts/start-openai.js",
+    "probe": "node scripts/probe-provider.js",
+    "start:proxy": "node --use-env-proxy src/main.js"
   },
   "dependencies": {
     "sharp": "0.35.5"
