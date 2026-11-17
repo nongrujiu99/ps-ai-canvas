@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const sharp = require('sharp');
-const { createServer } = require('../src/server');
+const { createServer, isAllowedOrigin } = require('../src/server');
 const clientToken = 'a'.repeat(43);
 
 async function fixture() {
@@ -293,5 +293,58 @@ test('纯生成任务不产生原图预览', async () => {
     jobManager: {
       start: async (job, extra) => { received.push(extra); return { jobId: '11111111-1111-4111-8111-111111111111', status: 'pending' }; },
     },
+  });
+});
+
+// ── Origin 白名单 ────────────────────────────────────────────────
+// 本地服务只认三种来源：opaque 的 'null'、file:// 面板、plugin:// 扩展。
+// 关键是不能让「看起来像白名单」的畸形 Origin 混进来。
+test('Origin 白名单：null 精确匹配，畸形 null.* 被拒绝', () => {
+  const allowed = ['null', 'plugin://studio', 'file://', 'plugin://'];
+  assert.equal(isAllowedOrigin('null', allowed), true);
+  assert.equal(isAllowedOrigin('null.evil.example', allowed), false);
+  assert.equal(isAllowedOrigin('nullify', allowed), false);
+});
+
+test('Origin 白名单：scheme 前缀放行（含裸前缀），精确条目不做前缀放宽', () => {
+  const allowed = ['plugin://studio', 'file://', 'plugin://'];
+  // README 契约：扩展 ID 会变，plugin:// 前缀必须放行。
+  assert.equal(isAllowedOrigin('plugin://some.other.extension', allowed), true);
+  assert.equal(isAllowedOrigin('file:///C:/panel/index.html', allowed), true);
+  // 裸 scheme 是面板真实 Origin：CEP 发 `file://`、UXP 发 `plugin://`，必须放行。
+  // 2026-11-17 曾误判为非法，导致面板全部 403「不允许的请求来源」，是真实回归。
+  assert.equal(isAllowedOrigin('file://', allowed), true);
+  assert.equal(isAllowedOrigin('plugin://', allowed), true);
+  assert.equal(isAllowedOrigin('plugin://studio.attacker.com', allowed), true, 'plugin:// 前缀条目仍放行');
+  assert.equal(isAllowedOrigin('https://evil.example', allowed), false);
+});
+
+test('真实面板 Origin（裸 file:// / plugin://）在 HTTP 层能连通服务', async () => {
+  // 用生产默认白名单，而非 withServer 测试专用的 ['plugin://studio','null']。
+  await withServer(async ({ base }) => {
+    for (const origin of ['file://', 'plugin://']) {
+      const response = await fetch(base + '/v1/settings/status', {
+        headers: { ...headers, Origin: origin },
+      });
+      assert.equal(response.status, 200, '面板 Origin ' + origin + ' 不应被 403 拒绝');
+    }
+  }, true, { server: { allowedOrigins: ['null', 'file://', 'plugin://'] } });
+});
+
+test('Origin 白名单：非浏览器客户端没有 Origin 时按 token 校验放行匹配', () => {
+  assert.equal(isAllowedOrigin(undefined, ['null']), true);
+  assert.equal(isAllowedOrigin('', ['null']), true);
+});
+
+test('畸形 null.* Origin 在 HTTP 层被拒绝，无法提交计费任务', async () => {
+  await withServer(async ({ base, submitted }) => {
+    const body = JSON.stringify({ operation: 'generate', prompt: '花瓶' });
+    const response = await fetch(base + '/v1/jobs', {
+      method: 'POST',
+      headers: { ...headers, Origin: 'null.evil.example' },
+      body,
+    });
+    assert.equal(response.status, 403);
+    assert.equal(submitted.length, 0);
   });
 });

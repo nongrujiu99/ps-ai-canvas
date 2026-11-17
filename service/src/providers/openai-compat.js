@@ -1062,7 +1062,8 @@ function createOpenAiCompatProvider({ fetchImpl = fetch, baseUrl, apiKey, model 
               + '想更清楚需要换一个能接受大尺寸的渠道。';
           }
         }
-        return { taskId, resultUrls: urls, size, notice: [downshiftFrom ? `当前渠道在 ${downshiftFrom} 这种大尺寸下没有可用上游，已按 ${size} 生成再放大到画布，细节会比原图软一些。` : '', smallSizeNote, expandNotice].filter(Boolean).join(' ') };
+        return { taskId, resultUrls: urls, size, notice: [downshiftFrom ? `当前渠道在 ${downshiftFrom} 这种大尺寸下没有可用上游，已按 ${size} 生成再放大到画布，细节会比原图软一些。` : '', smallSizeNote, expandNotice].filter(Boolean).join(' '),
+          cost: { channel: 'openai', label: '中转站', model, imageCount: urls.length || 1 } };
       } catch (error) {
         if (error && error.sizeRejected) {
           // 比例被改写 = 这个渠道不认自定义尺寸。记住这件事，并把标准档提前到

@@ -43,6 +43,8 @@
   compare.bind();
   // 卡片是复用的，点击时要拿到「当前这一批」的原图和结果，所以留一份最新的 state。
   var lastState = null;
+  // 缓存最近一次 host.inspect() 的结果，用于按钮状态判断（refreshDocument 每秒刷新）。
+  var lastCtx = null;
   // 生成期间显示占位卡。之前预览区在等待时是整块空白，用户分不清「在跑」还是
   // 「点了没反应」——状态栏那行小字在一个高面板里太容易被忽略。
   var placeholder = null;
@@ -58,11 +60,34 @@
     box.parentNode.insertBefore(placeholder, box);
     return placeholder;
   }
+  var focusedCardIndex = 0;
+  function updateCardFocus(index) {
+    if (previewCards.length === 0) return;
+    focusedCardIndex = Math.max(0, Math.min(index, previewCards.length - 1));
+    for (var i = 0; i < previewCards.length; i++) {
+      if (previewCards[i] && previewCards[i].el) {
+        previewCards[i].el.classList.toggle('focused', i === focusedCardIndex);
+      }
+    }
+  }
+  function renderHistoryBar(state) {
+    var bar = $('history-bar');
+    if (!bar) return;
+    var showBar = state.status === 'preview' && (state.historyCount || 0) > 1;
+    bar.classList.toggle('hidden', !showBar);
+    if (!showBar) return;
+    var cur = (state.historyIndex || 0) + 1;
+    var total = state.historyCount || 1;
+    $('history-label').textContent = '批次 ' + cur + ' / ' + total;
+    $('history-prev').disabled = cur <= 1;
+    $('history-next').disabled = cur >= total;
+  }
   function renderPreviews(state) {
     lastState = state;
     var box = $('previews');
     var busy = ['submitting', 'running'].indexOf(state.status) >= 0;
     ensurePlaceholder().classList.toggle('hidden', !busy);
+    renderHistoryBar(state);
     if (state.status !== 'preview') { box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
     var items = state.previews;
@@ -90,9 +115,10 @@
       card.img.src = previewSrc(items[i]);
       // 用 onclick 而不是 addEventListener：卡片是复用的，addEventListener 会越叠越多。
       card.use.onclick = (function (index) { return function () { controller.accept(index).catch(showError); }; }(i));
-      card.img.onclick = (function (index) { return function () { openViewer(index); }; }(i));
-      card.zoom.onclick = (function (index) { return function () { openViewer(index); }; }(i));
+      card.img.onclick = (function (index) { return function () { updateCardFocus(index); openViewer(index); }; }(i));
+      card.zoom.onclick = (function (index) { return function () { updateCardFocus(index); openViewer(index); }; }(i));
     }
+    updateCardFocus(0);
   }
   // 打开大图对比。原图只在这次任务带回了缩小版时才有（纯生成没有底稿），
   // 没有就退化成单图预览——不要画一个拖了没反应的滑块。
@@ -117,6 +143,23 @@
   // 否则才是「输入」。不加这一层，框里会永远停着一个手填的默认值，而服务端实际
   // 用的是透明边算出来的另一个数——用户看到「右 1.5」却得到了 1.11 的扩张，
   // 只能理解成「识别不对」。
+  function updateScaleNote(derived) {
+    var note = $('scale-note');
+    if (!note) return;
+    var count = 0;
+    var ids = ['top', 'right', 'bottom', 'left'];
+    for (var i = 0; i < ids.length; i++) {
+      var node = $(ids[i]);
+      if (node && Number(node.value) > 1.001) count++;
+    }
+    var base = derived
+      ? '四个数字由画布透明边推算，只显示、不能改。<br>描述只写材质和光线，别列物体。'
+      : '倍率按画布透明边自动推算（1 = 不扩）。<br>描述只写材质和光线，别列物体。';
+    if (count >= 2) {
+      base += '<span class="scale-warn">提示：同时向多方向扩图易重新构图，建议单向分步扩展。</span>';
+    }
+    note.innerHTML = base;
+  }
   function setScalesDerived(derived) {
     var grid = $('scale-grid');
     if (grid) grid.classList.toggle('derived', derived);
@@ -124,10 +167,30 @@
     for (var i = 0; i < ids.length; i++) {
       if ($(ids[i])) $(ids[i]).readOnly = derived;
     }
-    var note = $('scale-note');
-    if (note) note.innerHTML = derived
-      ? '四个数字由画布透明边推算，只显示、不能改。<br>描述只写材质和光线，别列物体。'
-      : '倍率按画布透明边自动推算（1 = 不扩）。<br>描述只写材质和光线，别列物体。';
+    updateScaleNote(derived);
+  }
+  // 根据当前模式和最新画布上下文决定「生成预览」按钮的可用状态与文案。
+  // 选区编辑模式下没有选区时，按钮变灰并提示用户先框选，避免点击后才报错。
+  function updateRunButton(busyOverride) {
+    var runBtn = $('run');
+    if (!runBtn) return;
+    var mode = controller.state().mode;
+    var busy = busyOverride !== undefined ? busyOverride
+      : (['preparing', 'submitting', 'running'].indexOf(controller.state().status) >= 0);
+    // 选区编辑模式 + 无选区 → 按钮置灰并换文案；忙碌时按原逻辑 disabled，不改文案
+    var needsSelection = (mode === 'edit') && lastCtx && !lastCtx.selectionBounds && !busy;
+    if (busy) {
+      runBtn.disabled = true;
+      // 文案在 render() 里管（重试 / 生成预览），这里不干扰
+    } else if (needsSelection) {
+      runBtn.disabled = true;
+      runBtn.textContent = '请先框选区域';
+    } else {
+      runBtn.disabled = false;
+      var s = controller.state();
+      var label = s.status === 'error' ? '重试' : '生成预览';
+      if (runBtn.textContent !== label) runBtn.textContent = label;
+    }
   }
   function render(state) {
     // 扩图比例可能由画布透明边自动推导，回填到输入框，避免界面显示的值和实际用的值不一致。
@@ -146,11 +209,9 @@
     busyState = state;
     $('status').textContent = statusText(state);
     $('status').className = 'status' + (state.status === 'error' ? ' error' : state.status === 'applied' ? ' ok' : '');
-    $('run').disabled = ['preparing', 'submitting', 'running'].indexOf(state.status) >= 0;
     // 失败后把按钮改成「重试」。上游抖动这类错误九成是再点一次就好，
     // 按钮还写着「生成预览」的话，用户会以为得先改点什么配置才能继续。
-    var runLabel = state.status === 'error' ? '重试' : '生成预览';
-    if ($('run').textContent !== runLabel) $('run').textContent = runLabel;
+    updateRunButton(busy);
     $('cancel').classList.toggle('hidden', state.status !== 'running');
     renderPreviews(state);
   }
@@ -182,8 +243,12 @@
     // 提示里那句「只写材质和光线、别列物体」放在描述框下面的说明里（跟着输入框一起可见），
     // 占位符只留一个短例子——长句会整个被截断，还占满输入区。
     $('prompt').placeholder = mode === 'expand'
-      ? '例如：右边接着白墙和木地板，暖光'
-      : mode === 'generate' ? '例如：极简风格的陶瓷花瓶，柔和自然光' : '例如：把选区里的杯子换成白色陶瓷花瓶';
+      ? '扩图：只写延伸区域的材质与光线（如：海边日落余晖、深色木地板延续），避免列新物体'
+      : mode === 'generate'
+        ? '文生图：输入画面主体、构图与艺术风格（如：极简陶瓷花瓶，柔和摄影光）'
+        : '选区编辑：留空自然补全，写描述局部重绘（如：把选区里的杯子换成白色花瓶）';
+    // 切换模式后按选区状态重新评估按钮——用户很可能在没有选区时切到「选区编辑」。
+    updateRunButton();
   }
   function values() {
     return {
@@ -196,9 +261,11 @@
   // RGB 位深和脚本版本号只在排查时有用，收进 tooltip——它们每帧都在那儿、却从不改变操作。
   function refreshDocument() {
     host.inspect().then(function (ctx) {
+      lastCtx = ctx;
       var text = ctx.width + ' × ' + ctx.height + (ctx.selectionBounds ? ' · 有选区' : ' · 无选区');
       $('document').textContent = text;
       $('document').title = text + ' · RGB 8 位' + (ctx.build ? ' · 脚本 ' + ctx.build : '');
+      updateRunButton();
     }, function (error) { $('document').textContent = error.message; });
   }
   // 面板加载后用户仍在 Photoshop 里改画布、拉选区，信息栏必须跟上，否则会一直显示旧状态。
@@ -306,6 +373,73 @@
   var buttons = document.querySelectorAll('.mode');
   for (var i = 0; i < buttons.length; i++) buttons[i].addEventListener('click', function () { modeChanged(this.getAttribute('data-mode')); });
   $('whole').addEventListener('change', function () { modeChanged(controller.state().mode); });
+  // 快捷键：Ctrl+Enter / Cmd+Enter 快速触发生成，符合专业修图师盲操肌肉记忆
+  $('prompt').addEventListener('keydown', function (event) {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      if (event.preventDefault) event.preventDefault();
+      if (!$('run').disabled) $('run').click();
+    }
+  });
+  // 手动调倍率时实时刷新双向预警
+  ['top', 'right', 'bottom', 'left'].forEach(function (id) {
+    if ($(id)) $(id).addEventListener('input', function () { updateScaleNote(false); });
+  });
+  // 键盘快捷键体系（P2）：
+  // 1. 大图预览开启时：数字键 1~4 盲操切图
+  // 2. 主面板显示结果卡片时：数字键聚焦卡片、Enter 应用当前卡片、Space 打开对比、[ / ] 翻页历史批次
+  document.addEventListener('keydown', function (event) {
+    // Enter / 空格 / 数字键在控件聚焦时属于控件自己。以前这里只挡了输入框，
+    // Tab 到「取消」「生成」按钮再按 Enter，会被抢去执行「应用结果」把图贴回
+    // 原图——不可逆误操作。按钮、链接、可编辑区一律放行给它们的原生行为。
+    var active = document.activeElement;
+    var activeTag = active ? active.tagName.toUpperCase() : '';
+    var isControlFocused = !!active && (
+      activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT'
+      || activeTag === 'BUTTON' || activeTag === 'A' || activeTag === 'SUMMARY'
+      || active.isContentEditable === true
+      || (typeof active.getAttribute === 'function' && active.getAttribute('contenteditable') !== null)
+    );
+    if (!isControlFocused && compare.state().open && lastState && lastState.previews && lastState.previews.length > 1) {
+      var n = parseInt(event.key, 10);
+      if (n >= 1 && n <= lastState.previews.length) {
+        openViewer(n - 1);
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+    }
+    if (!compare.state().open && !isControlFocused && lastState && lastState.status === 'preview' && previewCards.length > 0) {
+      var num = parseInt(event.key, 10);
+      if (num >= 1 && num <= previewCards.length) {
+        updateCardFocus(num - 1);
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+      if (event.key === 'Enter') {
+        if (previewCards[focusedCardIndex]) {
+          previewCards[focusedCardIndex].use.click();
+          if (event.preventDefault) event.preventDefault();
+          return;
+        }
+      }
+      if (event.key === ' ' || event.code === 'Space') {
+        openViewer(focusedCardIndex);
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+      if (event.key === '[') {
+        controller.navHistory(-1);
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+      if (event.key === ']') {
+        controller.navHistory(1);
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+    }
+  });
+  $('history-prev').addEventListener('click', function () { controller.navHistory(-1); });
+  $('history-next').addEventListener('click', function () { controller.navHistory(1); });
   $('run').addEventListener('click', function () {
     liveRefresh();
     // 第一次点生成就地拉起服务：用户不必先回顶部点「启动」，再回来点生成。

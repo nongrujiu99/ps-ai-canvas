@@ -2,6 +2,7 @@
 
 const { randomUUID } = require('node:crypto');
 const { problem } = require('./contract');
+const cost = require('./cost');
 
 function createJobManager({ provider, providerFactory, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), pollIntervalMs = 3000, timeoutMs = 10 * 60 * 1000, resultTtlMs = 10 * 60 * 1000, maxJobs = 32, log = (line) => process.stderr.write(line + '\n') } = {}) {
   if (typeof providerFactory !== 'function' && (!provider || typeof provider.submit !== 'function' || typeof provider.poll !== 'function')) {
@@ -44,6 +45,16 @@ function createJobManager({ provider, providerFactory, now = Date.now, sleep = (
     return { jobId: job.id, status: job.status, resultCount: job.status === 'succeeded' ? job.results.length : 0, errorCode: job.errorCode, errorMessage: job.errorMessage || '', notice: job.notice || '', seed: job.seed === undefined ? null : job.seed, hasOrigin: !!job.origin };
   }
 
+  // 成功时把成本拼进 notice（面板原本就会显示这一行，不用改 UI）。
+  // 只加一次：完整重跑会新建 job，只重下（recover）复用旧 job，都不该重复报。
+  function noteCost(job, poll) {
+    if (job.costNoted) return;
+    if (poll && poll.cost) job.cost = poll.cost;
+    const line = cost.describe(job.cost);
+    if (line) job.notice = job.notice ? job.notice + ' ' + line : line;
+    job.costNoted = true;
+  }
+
   // 失败原因必须留在两个地方：面板（用户看得懂）和服务窗口（排查时看得见）。
   // 以前只存一个 errorCode，面板又把它换成「生成任务未完成」，等于什么都没说——
   // 「超时」「模型名错」「尺寸被拒」在界面上长得一模一样。
@@ -52,7 +63,13 @@ function createJobManager({ provider, providerFactory, now = Date.now, sleep = (
   // sk-xxx"）。这段文字要经 HTTP 到面板、还会写进服务窗口，所以先脱敏再存。
   function redact(text) {
     return String(text || '')
+      // OpenAI / 中转站：sk- 开头的.Key，可能带下划线、连字符。
       .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-***')
+      // Vertex Express Mode：AQ. 开头的 Key（x-goog-api-key）。
+      .replace(/\bAQ\.[A-Za-z0-9_-]{8,}/g, 'AQ.***')
+      // BFL：x-key 传的 bfl_ 前缀 Key。
+      .replace(/\bbfl_[A-Za-z0-9_-]{8,}/g, 'bfl_***')
+      // 通用 Bearer 令牌（百炼 / 中转站的 Authorization: Bearer）。
       .replace(/(Bearer\s+)[A-Za-z0-9._-]{8,}/gi, '$1***');
   }
 
@@ -71,7 +88,13 @@ function createJobManager({ provider, providerFactory, now = Date.now, sleep = (
   // 两条路径的失败处理必须完全一样，否则又是一处会分叉的判定。
   async function collectResults(job, urls) {
     const results = [];
-    for (const url of urls) results.push(await job.fetchResult(url));
+    for (const url of urls) {
+      // 取消后不必把剩下的图继续拉完：多张候选每张几 MB，用户已经不要了。
+      // 首次生成路径在 collectResults 之后还有 job.cancelled 判定，提前退出安全；
+      // recover 路径也会检查 cancelled，不会把半截结果写成成功。
+      if (job.cancelled) break;
+      results.push(await job.fetchResult(url));
+    }
     return results;
   }
 
@@ -87,6 +110,8 @@ function createJobManager({ provider, providerFactory, now = Date.now, sleep = (
       // 供应商可能为了绕过上游限制降过一档尺寸。这个事实必须跟着结果一起回面板：
       // 用户看到「图有点软」时，得知道是渠道能力上限，而不是以为自己画质设置错了。
       job.notice = submitted.notice || '';
+      // 成本元数据也跟着提交结果存下，成功时再转成提示文字（见下方成功出口）。
+      job.cost = submitted.cost || null;
       // 供应商实际用的种子要跟着结果回面板：留空时是服务端摇的随机数，用户只有
       // 知道这个数才能把满意的那张再出一遍。
       if (submitted.seed !== undefined) job.seed = submitted.seed;
@@ -111,6 +136,7 @@ function createJobManager({ provider, providerFactory, now = Date.now, sleep = (
           job.status = 'succeeded';
           job.resultUrls = null;
           job.fetchResult = null;
+          noteCost(job, poll);
           log(`[job ${job.id.slice(0, 8)}] ok ${results.length} image(s) in ${Math.round((now() - job.startedAt) / 1000)}s`);
           return;
         }
@@ -188,19 +214,28 @@ function createJobManager({ provider, providerFactory, now = Date.now, sleep = (
     if (!Array.isArray(job.resultUrls) || job.resultUrls.length === 0 || typeof job.fetchResult !== 'function') {
       throw problem('NOT_RECOVERABLE', '这次没有可以复用的结果，需要重新生成。');
     }
+    // 这是一次新的重下操作：清掉上一次可能留下的取消标记，否则本次下载会被
+    // collectResults 里的 job.cancelled 判定直接跳过，一张也拉不回来。
+    job.cancelled = false;
     job.status = 'running';
     job.errorCode = null;
     job.errorMessage = '';
     log(`[job ${job.id.slice(0, 8)}] 只重新下载结果图，不重新生成`);
     try {
       const results = await collectResults(job, job.resultUrls);
+      // 下载途中用户点了取消：cancelWait 已把状态设成 cancelled。这里绝不能
+      // 再写回 succeeded——否则面板显示「已取消」，任务却悄悄变成成功，用户
+      // 既拿不到图也不知道发生了什么。结果链接保留，下次还能再试。
+      if (job.cancelled) return publicState(job);
       job.results = results;
       job.status = 'succeeded';
       job.resultUrls = null;
       job.fetchResult = null;
+      noteCost(job, null);
       log(`[job ${job.id.slice(0, 8)}] ok ${results.length} image(s)（重下成功）`);
       return publicState(job);
     } catch (error) {
+      if (job.cancelled) return publicState(job);
       const code = /^[A-Z][A-Z0-9_]{1,63}$/.test(error && error.code || '') ? error.code : 'TASK_FAILED';
       fail(job, code, (error && error.message) || '未知错误。');
       const failure = problem(code, job.errorMessage);

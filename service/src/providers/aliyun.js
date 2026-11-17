@@ -261,7 +261,7 @@ function createAliyunProvider({ fetchImpl = fetch, endpoint, apiKey, requestTime
     if (urls.length === 0) throw providerError('EMPTY_RESULT', '模型未返回图像。');
     const taskId = `sync-${randomUUID()}`;
     syncResults.set(taskId, urls);
-    return { taskId };
+    return { taskId, cost: { channel: 'aliyun', model: body.model, imageCount: urls.length } };
   }
 
   // 指令式模型没有扩图比例参数，改为把它要输出的画面先「铺好」：
@@ -372,7 +372,7 @@ function createAliyunProvider({ fetchImpl = fetch, endpoint, apiKey, requestTime
       });
       const taskId = payload.output && payload.output.task_id;
       if (typeof taskId !== 'string' || !taskId) throw providerError('ALIYUN_RESPONSE', '百炼未返回任务编号。');
-      return { taskId };
+      return { taskId, cost: { channel: 'aliyun', model: 'wan2.7-image', imageCount: job.n || 1 } };
     }
 
     // 选区编辑要靠 mask_image_url 指定改哪里，只有 wanx2.1-imageedit 这个老接口支持；
@@ -457,7 +457,7 @@ function createAliyunProvider({ fetchImpl = fetch, endpoint, apiKey, requestTime
     });
     const taskId = payload.output && payload.output.task_id;
     if (typeof taskId !== 'string' || !taskId) throw providerError('ALIYUN_RESPONSE', '百炼未返回任务编号。');
-    return { taskId };
+    return { taskId, cost: { channel: 'aliyun', model: 'wanx2.1-imageedit', imageCount: job.n || 1 } };
   }
 
   async function poll(taskId) {

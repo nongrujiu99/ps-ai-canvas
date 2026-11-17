@@ -44,6 +44,9 @@ const compare = createCompareView({ $ });
 compare.bind();
 // 卡片是复用的，点击时要拿到「当前这一批」的原图和结果，所以留一份最新的 state。
 let lastState = null;
+// 缓存最近一次 host.inspect() 的结果，用于「无选区时禁用生成按钮」的判断
+// （refreshDocument 每秒刷新）。与 CEP 保持同一套逻辑。
+let lastCtx = null;
 // 生成期间显示占位卡。之前预览区在等待时是整块空白，用户分不清「在跑」还是
 // 「点了没反应」——状态栏那行小字在一个高面板里太容易被忽略。
 let placeholder = null;
@@ -59,11 +62,32 @@ function ensurePlaceholder() {
   box.parentNode.insertBefore(placeholder, box);
   return placeholder;
 }
+let focusedCardIndex = 0;
+function updateCardFocus(index) {
+  if (previewCards.length === 0) return;
+  focusedCardIndex = Math.max(0, Math.min(index, previewCards.length - 1));
+  previewCards.forEach((card, i) => {
+    if (card && card.el) card.el.classList.toggle('focused', i === focusedCardIndex);
+  });
+}
+function renderHistoryBar(state) {
+  const bar = $('history-bar');
+  if (!bar) return;
+  const showBar = state.status === 'preview' && (state.historyCount || 0) > 1;
+  bar.classList.toggle('hidden', !showBar);
+  if (!showBar) return;
+  const cur = (state.historyIndex || 0) + 1;
+  const total = state.historyCount || 1;
+  $('history-label').textContent = `批次 ${cur} / ${total}`;
+  $('history-prev').disabled = cur <= 1;
+  $('history-next').disabled = cur >= total;
+}
 function renderPreviews(state) {
   lastState = state;
   const box = $('previews');
   const busy = ['submitting', 'running'].includes(state.status);
   ensurePlaceholder().classList.toggle('hidden', !busy);
+  renderHistoryBar(state);
   if (state.status !== 'preview') { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
   const items = state.previews;
@@ -92,9 +116,10 @@ function renderPreviews(state) {
     card.img.src = previewSrc(items[i]);
     // 复用卡片时用 onclick，避免 addEventListener 越叠越多。
     card.use.onclick = () => controller.accept(i).catch(showError);
-    card.img.onclick = () => openViewer(i);
-    card.zoom.onclick = () => openViewer(i);
+    card.img.onclick = () => { updateCardFocus(i); openViewer(i); };
+    card.zoom.onclick = () => { updateCardFocus(i); openViewer(i); };
   }
+  updateCardFocus(0);
 }
 // 打开大图对比。原图只在这次任务带回了缩小版时才有（纯生成没有底稿），
 // 没有就退化成单图预览——不要画一个拖了没反应的滑块。
@@ -115,14 +140,49 @@ function statusText(state) {
 // 倍率框有两种身份，界面上必须分得开：推导成功时它们是「读数」（灰、只读），
 // 否则才是「输入」。不加这一层，框里会永远停着一个手填的默认值，而实际用的是
 // 透明边算出来的另一个数——用户看到「右 1.5」却得到 1.11 的扩张，只能理解成识别不对。
+function updateScaleNote(derived) {
+  const note = $('scale-note');
+  if (!note) return;
+  let count = 0;
+  for (const id of ['top', 'right', 'bottom', 'left']) {
+    const node = $(id);
+    if (node && Number(node.value) > 1.001) count++;
+  }
+  let base = derived
+    ? '四个数字由画布透明边推算，只显示、不能改。<br>描述只写材质和光线，别列物体。'
+    : '倍率按画布透明边自动推算（1 = 不扩）。<br>描述只写材质和光线，别列物体。';
+  if (count >= 2) {
+    base += '<span class="scale-warn">提示：同时向多方向扩图易重新构图，建议单向分步扩展。</span>';
+  }
+  note.innerHTML = base;
+}
 function setScalesDerived(derived) {
   const grid = $('scale-grid');
   if (grid) grid.classList.toggle('derived', derived);
   ['top', 'right', 'bottom', 'left'].forEach((id) => { if ($(id)) $(id).readOnly = derived; });
-  const note = $('scale-note');
-  if (note) note.textContent = derived
-    ? '四个数字由画布透明边推算，只显示、不能改。描述只写材质和光线，别列物体。'
-    : '倍率按画布透明边自动推算（1 = 不扩）。描述只写材质和光线，别列物体。';
+  updateScaleNote(derived);
+}
+// 根据当前模式和最新画布上下文决定「生成预览」按钮的可用状态与文案。
+// 选区编辑模式下没有选区时置灰并提示先框选；忙碌时按原逻辑 disabled，不改文案。
+// 与 CEP 同一套判定，避免两端行为分叉。
+function updateRunButton(busyOverride) {
+  const runBtn = $('run');
+  if (!runBtn) return;
+  const mode = controller.state().mode;
+  const busy = busyOverride !== undefined ? busyOverride
+    : ['preparing', 'submitting', 'running'].includes(controller.state().status);
+  const needsSelection = (mode === 'edit') && lastCtx && !lastCtx.selectionBounds && !busy;
+  if (busy) {
+    runBtn.disabled = true;
+    // 文案在 render() 里管（重试 / 生成预览），这里不干扰
+  } else if (needsSelection) {
+    runBtn.disabled = true;
+    runBtn.textContent = '请先框选区域';
+  } else {
+    runBtn.disabled = false;
+    const label = controller.state().status === 'error' ? '重试' : '生成预览';
+    if (runBtn.textContent !== label) runBtn.textContent = label;
+  }
 }
 function render(state) {
   // 扩图比例可能由画布透明边自动推导：回填输入框，避免界面显示的值和实际用的值不一致。
@@ -139,7 +199,8 @@ function render(state) {
   busyState = state;
   $('status').textContent = statusText(state);
   $('status').className = 'status' + (state.status === 'error' ? ' error' : state.status === 'applied' ? ' ok' : '');
-  $('run').disabled = busy;
+  // 失败后把按钮改成「重试」，无选区时置灰并提示——统一交给 updateRunButton。
+  updateRunButton(busy);
   $('cancel').classList.toggle('hidden', state.status !== 'running');
   renderPreviews(state);
 }
@@ -162,6 +223,13 @@ function modeChanged(mode) {
   // 三个短参数已提到常显的参数行，这层只剩条件项，没有可见项时整块收起来。
   hideEmptyAdvanced();
   $('prompt-hint').textContent = mode === 'generate' || (mode === 'edit' && $('whole').checked) ? '必填' : '可留空';
+  $('prompt').placeholder = mode === 'expand'
+    ? '扩图：只写延伸区域的材质与光线（如：海边日落余晖、深色木地板延续），避免列新物体'
+    : mode === 'generate'
+      ? '文生图：输入画面主体、构图与艺术风格（如：极简陶瓷花瓶，柔和摄影光）'
+      : '选区编辑：留空自然补全，写描述局部重绘（如：把选区里的杯子换成白色花瓶）';
+  // 切换模式后按选区状态重新评估按钮——用户很可能在没有选区时切到「选区编辑」。
+  updateRunButton();
 }
 function values() {
   return { mode: controller.state().mode, prompt: $('prompt').value, whole: $('whole').checked, strength: $('strength').value, n: Number($('count').value), size: $('size').value, seed: $('seed').value,
@@ -171,9 +239,11 @@ function values() {
 async function refreshDocument() {
   try {
     const ctx = await host.inspect();
+    lastCtx = ctx;
     const text = `${ctx.width} × ${ctx.height} · ${ctx.selectionBounds ? '有选区' : '无选区'}`;
     $('document').textContent = text;
     $('document').title = `${text} · RGB 8 位`;
+    updateRunButton();
   } catch (error) { $('document').textContent = error.message; }
 }
 async function quickRoute() {
@@ -220,6 +290,73 @@ async function refreshProvider() {
 
 document.querySelectorAll('.mode').forEach((button) => button.addEventListener('click', () => modeChanged(button.getAttribute('data-mode'))));
 $('whole').addEventListener('change', () => modeChanged(controller.state().mode));
+// 快捷键：Ctrl+Enter / Cmd+Enter 快速触发生成，符合专业修图师盲操肌肉记忆
+$('prompt').addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    if (event.preventDefault) event.preventDefault();
+    if (!$('run').disabled) $('run').click();
+  }
+});
+// 手动调倍率时实时刷新双向预警
+['top', 'right', 'bottom', 'left'].forEach((id) => {
+  if ($(id)) $(id).addEventListener('input', () => updateScaleNote(false));
+});
+// 键盘快捷键体系（P2）：
+// 1. 大图预览开启时：数字键 1~4 盲操切图
+// 2. 主面板显示结果卡片时：数字键聚焦卡片、Enter 应用当前卡片、Space 打开对比、[ / ] 翻页历史批次
+document.addEventListener('keydown', (event) => {
+  // Enter / 空格 / 数字键在控件聚焦时属于控件自己。以前这里只挡了输入框，
+  // Tab 到「取消」「生成」按钮再按 Enter，会被抢去执行「应用结果」把图贴回
+  // 原图——不可逆误操作。按钮、链接、可编辑区一律放行给它们的原生行为。
+  const active = document.activeElement;
+  const activeTag = active ? active.tagName.toUpperCase() : '';
+  const isControlFocused = !!active && (
+    activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT'
+    || activeTag === 'BUTTON' || activeTag === 'A' || activeTag === 'SUMMARY'
+    || active.isContentEditable === true
+    || (typeof active.getAttribute === 'function' && active.getAttribute('contenteditable') !== null)
+  );
+  if (!isControlFocused && compare.state().open && lastState && lastState.previews && lastState.previews.length > 1) {
+    const n = parseInt(event.key, 10);
+    if (n >= 1 && n <= lastState.previews.length) {
+      openViewer(n - 1);
+      if (event.preventDefault) event.preventDefault();
+      return;
+    }
+  }
+  if (!compare.state().open && !isControlFocused && lastState && lastState.status === 'preview' && previewCards.length > 0) {
+    const num = parseInt(event.key, 10);
+    if (num >= 1 && num <= previewCards.length) {
+      updateCardFocus(num - 1);
+      if (event.preventDefault) event.preventDefault();
+      return;
+    }
+    if (event.key === 'Enter') {
+      if (previewCards[focusedCardIndex]) {
+        previewCards[focusedCardIndex].use.click();
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+    }
+    if (event.key === ' ' || event.code === 'Space') {
+      openViewer(focusedCardIndex);
+      if (event.preventDefault) event.preventDefault();
+      return;
+    }
+    if (event.key === '[') {
+      controller.navHistory(-1);
+      if (event.preventDefault) event.preventDefault();
+      return;
+    }
+    if (event.key === ']') {
+      controller.navHistory(1);
+      if (event.preventDefault) event.preventDefault();
+      return;
+    }
+  }
+});
+$('history-prev').addEventListener('click', () => controller.navHistory(-1));
+$('history-next').addEventListener('click', () => controller.navHistory(1));
 $('run').addEventListener('click', () => controller.run(values()).catch(showError));
 $('cancel').addEventListener('click', () => controller.cancel().catch(showError));
 // 渠道切换放在面板里：换中转站/换模型不用改 openai.env、不用重开终端。

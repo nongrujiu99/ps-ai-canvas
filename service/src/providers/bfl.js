@@ -94,11 +94,36 @@ function fmtRect(rect) {
   return rect.left + ',' + rect.top + ' ' + (rect.right - rect.left) + 'x' + (rect.bottom - rect.top);
 }
 
-// 有 alpha 就压到白底再发。压平不会移动任何像素，只把透明区变成白色。
-async function opaquePng(pngBytes) {
+// BFL 的 fill 端点有 20MB 硬限（422 "Image file size exceeds 20MB limit"）。这里有两个
+// 不同的维度，不能混为一谈：
+//   1) 解码后 raw 像素：实测 2048x2560 带 alpha 的 RGBA = 20.00MB 顶线被拒，去掉 alpha
+//      变 RGB = 15MB 就过。所以「送出去的图解码后多大」是能否被接受的关键——去 alpha 是
+//      真正有效的修复。expand 靠重采样避开，fill 为保 mask 逐像素对齐不能缩尺寸。
+//   2) 上传文件字节：转 q95 JPEG 只压这个维度（传输体积），不改变解码后 raw。高噪点大图
+//      文件偏大时转一下更安全；但 raw 本身就超限时转 JPEG 救不了，只能如实提示用户。
+// 贴回原图用原始 pngBytes/baseBytes，选区外像素零影响。
+const BFL_RAW_LIMIT = 20 * 1024 * 1024;   // BFL 按解码后 raw 判定的上限
+const FILL_SEND_LIMIT = 12 * 1024 * 1024; // 上传文件字节的安全线，留足 base64 膨胀余量
+async function fitFillUpload(pngBytes) {
   const meta = await sharp(pngBytes).metadata();
-  if (!meta.hasAlpha) return pngBytes;
-  return sharp(pngBytes).flatten({ background: '#ffffff' }).png().toBuffer();
+  const width = meta.width || 0;
+  const height = meta.height || 0;
+  // 去 alpha 后 BFL 解码得到 RGB，raw = w*h*3。这是判定 20MB 的真实口径。
+  const rawRgbBytes = width * height * 3;
+  const overRawLimit = rawRgbBytes > BFL_RAW_LIMIT;
+  let bytes = pngBytes;
+  let steps = [];
+  // 无条件去 alpha：全 255 的 alpha 也会让 raw 按 RGBA 算到 20MB。
+  if (meta.hasAlpha) {
+    bytes = await sharp(bytes).flatten({ background: '#ffffff' }).png().toBuffer();
+    steps.push('去alpha通道');
+  }
+  // 文件字节兜底：压的是传输体积，不改 raw。raw 超限时它救不了，仅减少传输失败概率。
+  if (bytes.length > FILL_SEND_LIMIT) {
+    bytes = await sharp(bytes).jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toBuffer();
+    steps.push('转JPEG q95');
+  }
+  return { bytes, steps, formatChanged: steps.length > 0, overRawLimit, rawRgbBytes };
 }
 
 const MODERATED = new Set(['Request Moderated', 'Content Moderated']);
@@ -386,7 +411,8 @@ function createBflProvider({
     const notes = [];
     if (Number(job.n) > 1) notes.push('这个通道一次只出一张，已按 1 张生成（候选数量 2~4 只有百炼/中转站支持）');
     if (hasChinese(prompt)) notes.push('FLUX 是英文模型，中文提示词通常效果打折');
-    return { taskId, size: `${requested.width}*${requested.height}`, notice: notes.length ? notes.join('；') + '。' : '', seed };
+    return { taskId, size: `${requested.width}*${requested.height}`, notice: notes.length ? notes.join('；') + '。' : '', seed,
+      cost: { channel: 'bfl', endpoint, pixels: requested.width * requested.height, imageCount: 1 } };
   }
 
   // ── 扩图：四边像素直接告诉模型，不再「补比例→裁边」 ──────────────────────
@@ -470,15 +496,28 @@ function createBflProvider({
     const notice = typed && typed !== DEFAULT_EXPAND_PROMPT && hasChinese(typed)
       ? 'FLUX 是英文模型，中文提示词通常效果打折；扩图时不写提示词往往更稳。'
       : '';
-    return { taskId, size: canvas.width + '*' + canvas.height, notice };
+    return { taskId, size: canvas.width + '*' + canvas.height, notice,
+      cost: { channel: 'bfl', endpoint, pixels: canvas.width * canvas.height, imageCount: 1 } };
   }
 
   // ── 选区编辑：真 mask，不是矩形贴回 ────────────────────────────────────
   async function submitFill(job, pngBytes, maskBytes, canvas, info) {
-    // 画布上除了照片还可能有透明区（扩图区、被隐藏的图层）。带透明发给 BFL 会被
-    // 判成 Content Moderated——这和 expand 那边是同一个坑，只是这里没法靠收缩矩形躲开
-    // （mask 坐标是按整张画布算的），所以压成白底。mask 外本来就不参与合成，白色不脏结果。
-    const sendBytes = info && info.transparentBounds ? await opaquePng(pngBytes) : pngBytes;
+    // 透明区会被 BFL 判成 Content Moderated，带 alpha 通道（哪怕全不透明）会让它按 RGBA
+    // 解码而顶到 20MB。两者都在 fitFillUpload 里处理：无条件去 alpha + 超限转 JPEG。
+    const upload = await fitFillUpload(pngBytes);
+    const sendBytes = upload.bytes;
+    if (upload.formatChanged) process.stderr.write('[bfl] 底图 ' + (pngBytes.length / 1048576).toFixed(1)
+      + 'MB → ' + (sendBytes.length / 1048576).toFixed(1) + 'MB（' + upload.steps.join('+')
+      + '，避开 20MB 上限；尺寸不变，mask 对齐）\n');
+    // raw 超过 BFL 硬限时，转 JPEG 压的只是传输字节，解码后 still 超限——上游多半会 422。
+    // 与其让用户对着「file size exceeds 20MB」猜是自己哪里配错，不如提前说清是画布太大，
+    // 并给出可执行的下一步（缩小选区 / 分块）。这只加提示，不拦截，避免误伤上游口径变化。
+    let fillNotice = '';
+    if (upload.overRawLimit) {
+      fillNotice = '本次底图按像素算约 ' + (upload.rawRgbBytes / 1048576).toFixed(0)
+        + 'MB，超过 BFL 20MB 上限，可能被上游拒绝；建议缩小选区或分块编辑。';
+      process.stderr.write('[bfl] 警告：' + fillNotice + '\n');
+    }
     const body = {
       image: sendBytes.toString('base64'),
       mask: maskBytes.toString('base64'),
@@ -492,7 +531,8 @@ function createBflProvider({
     if (!taskId) throw problem('BFL_RESPONSE', 'BFL 没有返回任务编号。');
     // maskBytes 留着：下载时按它复合回原图，保证 mask 外零变化。
     remember(taskId, { payload, endpoint, requestBody: body, target: canvas, composite: null, maskBytes, baseBytes: pngBytes });
-    return { taskId, size: canvas.width + '*' + canvas.height, notice: '' };
+    return { taskId, size: canvas.width + '*' + canvas.height, notice: fillNotice,
+      cost: { channel: 'bfl', endpoint, pixels: canvas.width * canvas.height, imageCount: 1 } };
   }
 
   async function submit(job) {

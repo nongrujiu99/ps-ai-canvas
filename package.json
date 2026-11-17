@@ -1,0 +1,25 @@
+{
+  "name": "ps-ai-canvas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Photoshop AI 选区编辑、扩图与生成插件 (CEP & UXP)",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "test": "npm run test:hosts && npm run test:service",
+    "test:hosts": "node --test hosts/cep/test/*.test.js hosts/uxp/test/*.test.js",
+    "test:service": "npm --prefix service test",
+    "sync": "node scripts/sync-shared.js",
+    "sync:check": "node scripts/sync-shared.js --check",
+    "verify": "node scripts/sync-shared.js --check && npm run test:hosts && powershell -File ./release/verify-packages.ps1",
+    "verify:all": "node scripts/sync-shared.js --check && npm test && powershell -File ./release/verify-packages.ps1",
+    "preview": "powershell -Command \"Start-Process msedge.exe \\\"$PWD/preview/live.html\\\"\"",
+    "preview:ui": "powershell -Command \"Start-Process msedge.exe \\\"$PWD/preview/ui-template.html\\\"\"",
+    "start:service": "npm --prefix service start",
+    "build": "powershell -File ./release/build-bundle.ps1",
+    "build:cep": "powershell -File ./release/build-cep.ps1",
+    "build:uxp": "powershell -File ./release/build-uxp.ps1",
+    "build:service": "powershell -File ./release/build-service.ps1"
+  }
+}

@@ -117,43 +117,6 @@ Studio.selectTopVisibleLayer = function (doc) {
     doc.artLayers.add();
 };
 
-Studio.makeSelectionPng = function (source, bounds, file) {
-    var maskDoc = null;
-    try {
-        // 直接创建灰度文档（PS 2018 兼容），不复制原图、不 flatten、不 changeMode
-        maskDoc = app.documents.add(
-            UnitValue(source.width.as('px'), 'px'),
-            UnitValue(source.height.as('px'), 'px'),
-            source.resolution,
-            'AI IMAGE STUDIO mask',
-            NewDocumentMode.GRAYSCALE
-        );
-        app.activeDocument = maskDoc;
-        // 先全选填黑（选区外为黑）
-        maskDoc.selection.selectAll();
-        var black = new SolidColor();
-        black.gray.gray = 0;
-        maskDoc.selection.fill(black);
-        maskDoc.selection.deselect();
-        // 用选区边界坐标重建矩形选区，填白（选区内为白）
-        var region = [
-            [UnitValue(bounds.left, 'px'), UnitValue(bounds.top, 'px')],
-            [UnitValue(bounds.right, 'px'), UnitValue(bounds.top, 'px')],
-            [UnitValue(bounds.right, 'px'), UnitValue(bounds.bottom, 'px')],
-            [UnitValue(bounds.left, 'px'), UnitValue(bounds.bottom, 'px')]
-        ];
-        maskDoc.selection.select(region, SelectionType.REPLACE, 0, false);
-        var white = new SolidColor();
-        white.gray.gray = 100;
-        maskDoc.selection.fill(white);
-        maskDoc.selection.deselect();
-        Studio.savePng(maskDoc, file);
-    } finally {
-        if (maskDoc) maskDoc.close(SaveOptions.DONOTSAVECHANGES);
-        app.activeDocument = source;
-    }
-};
-
 Studio.workArea = function (context) {
     var full = { left: 0, top: 0, right: context.width, bottom: context.height };
     if (context.width <= 4096 && context.height <= 4096) return full;
@@ -422,26 +385,18 @@ Studio.capture = function (operation, options) {
         var folder = Folder.temp;
         var token = String(new Date().getTime()) + '-' + String(Math.floor(Math.random() * 1000000));
         var imageFile = File(folder.fsName + '/studio-image-' + token + '.png');
-        var maskFile = File(folder.fsName + '/studio-mask-' + token + '.png');
-        var workMaskFile = File(folder.fsName + '/studio-work-mask-' + token + '.png');
         var duplicate = null;
-        var workMaskDoc = null;
         try {
+            // 遮罩绝不在这里生成。makeSelectionPng 曾用 selection.fill() 在新建的
+            // 灰度文档里画黑白矩形，但 ExtendScript 的 fill 走 action manager，
+            // 在部分 PS 版本（含中文 CC 2018）会作用到前台的原文档而不是临时文档，
+            // 把用户框选的那块直接填黑——生成过程中画面被破坏就是这么来的。
+            // 现在只抓图；遮罩由 JS 侧用 context.selectionBounds 生成（与 UXP 一致）。
             duplicate = original.duplicate('AI IMAGE STUDIO capture', false);
             app.activeDocument = duplicate;
-            if (context.selectionBounds && (operation === 'editMasked' || operation === 'expand'))
-                Studio.makeSelectionPng(duplicate, context.selectionBounds, maskFile);
             var area = operation === 'editMasked' ? Studio.workArea(context) : { left: 0, top: 0, right: context.width, bottom: context.height };
             context.workArea = area;
             var cropped = area.left || area.top || area.right !== context.width || area.bottom !== context.height;
-            if (cropped && maskFile.exists) {
-                workMaskDoc = app.open(maskFile);
-                Studio.cropToArea(workMaskDoc, area);
-                Studio.savePng(workMaskDoc, workMaskFile);
-                workMaskDoc.close(SaveOptions.DONOTSAVECHANGES);
-                workMaskDoc = null;
-                app.activeDocument = duplicate;
-            }
             // 注意：不调用 mergeVisibleLayers()。它在「活动图层不可见」等场景会报
             // 「合并可见图层当前不可用」并弹模态框阻塞。saveAs PNG 时 PS 会自动合成
             // 所有可见图层，无需手动合并。
@@ -449,14 +404,11 @@ Studio.capture = function (operation, options) {
             Studio.savePng(duplicate, imageFile);
             context.operation = operation;
             context.scales = options && options.scales ? options.scales : null;
-            return { context: context, imagePath: imageFile.fsName, maskPath: cropped ? workMaskFile.fsName : maskFile.exists ? maskFile.fsName : null, applyMaskPath: maskFile.exists ? maskFile.fsName : null };
+            return { context: context, imagePath: imageFile.fsName, maskPath: null, applyMaskPath: null };
         } catch (error) {
             if (imageFile.exists) imageFile.remove();
-            if (maskFile.exists) maskFile.remove();
-            if (workMaskFile.exists) workMaskFile.remove();
             throw error;
         } finally {
-            if (workMaskDoc) workMaskDoc.close(SaveOptions.DONOTSAVECHANGES);
             if (duplicate) duplicate.close(SaveOptions.DONOTSAVECHANGES);
             app.activeDocument = original;
         }
@@ -547,7 +499,6 @@ Studio.apply = function (resultPath, snapshot, maskPath) {
         var merged = false;
         var trimmed = false;
         var separate = false;
-        var selectionDoc = null;
         var resized = false;
         // 诊断字段是全局的，每次应用前清一次，避免把上一次的失败原因带出来误导排查。
         Studio.trimReason = '';
@@ -610,13 +561,20 @@ Studio.apply = function (resultPath, snapshot, maskPath) {
                 layer.name = snapshot.operation === 'editWhole' ? 'AI 图像工坊 整图重绘'
                     : snapshot.operation === 'generate' ? 'AI 图像工坊 生成' : 'AI 图像工坊 选区编辑';
                 if (snapshot.operation === 'editMasked') {
-                    var selectionFile = File(maskPath);
-                    if (!selectionFile.exists) Studio.fail('RESULT_MISSING', '选区蒙版文件不存在。');
-                    selectionDoc = app.open(selectionFile);
-                    if (Math.round(selectionDoc.width.as('px')) !== current.width || Math.round(selectionDoc.height.as('px')) !== current.height)
-                        Studio.fail('RESULT_SIZE', '选区蒙版尺寸与画布不同。');
-                    app.activeDocument = target;
-                    target.selection.load(selectionDoc.channels[0], SelectionType.REPLACE);
+                    // 用抓图时读到的选区坐标重建选区，不再从遮罩文件加载。
+                    // 遮罩文件已彻底移除：以前把它存成灰度 PNG 再 app.open 读回，
+                    // 除了会污染原图，还在部分版本上因通道读取失败而报错。
+                    // selectionBounds 是 capture 时从 doc.selection.bounds 只读拿到的，
+                    // 坐标就是原文档坐标，直接 select 即可，全程不碰像素。
+                    var b = snapshot.selectionBounds;
+                    if (!b) Studio.fail('NO_SELECTION', '原选区已丢失，无法应用结果。');
+                    var region = [
+                        [UnitValue(b.left, 'px'), UnitValue(b.top, 'px')],
+                        [UnitValue(b.right, 'px'), UnitValue(b.top, 'px')],
+                        [UnitValue(b.right, 'px'), UnitValue(b.bottom, 'px')],
+                        [UnitValue(b.left, 'px'), UnitValue(b.bottom, 'px')]
+                    ];
+                    target.selection.select(region, SelectionType.REPLACE, 0, false);
                     // 建图层蒙版（Mk '）在部分版本上会报「该功能不在这个版本的 Photoshop
                     // 中使用」。失败时保留整层并把原因带回面板，不要把已经贴好的结果整段回滚。
                     try { Studio.revealSelectionMask(); } catch (e) { Studio.trimReason = 'mask=' + Studio.msg(e); }
@@ -638,9 +596,8 @@ Studio.apply = function (resultPath, snapshot, maskPath) {
             }
             throw error;
         } finally {
-            // 无论成功失败都要关掉临时打开的结果/蒙版文档并把焦点还给原文档，
+            // 无论成功失败都要关掉临时打开的结果文档并把焦点还给原文档，
             // 否则出错时那张结果图会一直留在界面上，看起来就像「新建了画布」。
-            if (selectionDoc) { try { selectionDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (_) {} }
             if (source && source !== target) { try { source.close(SaveOptions.DONOTSAVECHANGES); } catch (_) {} }
             app.activeDocument = target;
         }

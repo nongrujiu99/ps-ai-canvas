@@ -80,6 +80,16 @@ test('a provider failure text containing a key is redacted from public job state
   assert.equal(JSON.stringify(job).includes('sk-very-secret-key'), false);
 });
 
+test('Vertex AQ. and BFL bfl_ keys are redacted too, not just sk-', async () => {
+  for (const secret of ['AQ.vertexExpressKey123456', 'bfl_realsecretkey999999']) {
+    const manager = createJobManager({ provider: { submit: async () => { throw new Error(`Incorrect API key ${secret} rejected`); }, poll: async () => ({ status: 'PENDING', resultUrls: [] }) } });
+    const { jobId } = await manager.start({ operation: 'generate' });
+    const job = await settled(manager, jobId);
+    assert.equal(JSON.stringify(job).includes(secret), false, `key ${secret.slice(0, 4)} must not leak`);
+    assert.match(job.errorMessage, /\*\*\*/);
+  }
+});
+
 test('provider factory creates a separate provider for each submitted job', async () => {
   let next = 0;
   const used = [];
@@ -153,6 +163,63 @@ test('下载失败时保住结果链接，重试只重下不重新生成', async
   assert.equal(manager.getResult(jobId, 0).toString(), 'recovered-bytes');
 });
 
+test('重下途中被取消时保持 cancelled，不会被翻回 succeeded', async () => {
+  let manager;
+  let jobId;
+  let downloads = 0;
+  const provider = {
+    submit: async () => ({ taskId: 'cancel-race' }),
+    poll: async () => ({ status: 'SUCCEEDED', resultUrls: ['https://cdn.example.com/a.png', 'https://cdn.example.com/b.png'] }),
+    download: async () => {
+      downloads += 1;
+      if (downloads === 1) {
+        const error = new Error('首次下载失败');
+        error.code = 'RESULT_DOWNLOAD';
+        throw error;
+      }
+      // 第二次下载（recover）进行中，用户在面板点了取消。
+      manager.cancelWait(jobId);
+      return Buffer.from('should-not-be-used');
+    },
+  };
+  manager = createJobManager({ provider, sleep: async () => {} });
+  ({ jobId } = await manager.start({ operation: 'expand' }));
+  assert.equal((await settled(manager, jobId)).status, 'failed');
+
+  const recovered = await manager.recover(jobId);
+  assert.equal(recovered.status, 'cancelled', '取消后不能被下载完成翻成 succeeded');
+  assert.equal(manager.get(jobId).status, 'cancelled');
+  assert.throws(() => manager.getResult(jobId, 0), { code: 'RESULT_UNAVAILABLE' });
+});
+
+test('取消后再次重试能重新下载，不被上一次的取消标记卡住', async () => {
+  let manager;
+  let jobId;
+  let downloads = 0;
+  const provider = {
+    submit: async () => ({ taskId: 'retry-after-cancel' }),
+    poll: async () => ({ status: 'SUCCEEDED', resultUrls: ['https://cdn.example.com/a.png'] }),
+    download: async () => {
+      downloads += 1;
+      if (downloads === 1) {
+        const error = new Error('首次下载失败');
+        error.code = 'RESULT_DOWNLOAD';
+        throw error;
+      }
+      if (downloads === 2) { manager.cancelWait(jobId); return Buffer.from('discarded'); }
+      return Buffer.from('final-bytes');
+    },
+  };
+  manager = createJobManager({ provider, sleep: async () => {} });
+  ({ jobId } = await manager.start({ operation: 'expand' }));
+  await settled(manager, jobId);
+
+  assert.equal((await manager.recover(jobId)).status, 'cancelled');
+  const again = await manager.recover(jobId);
+  assert.equal(again.status, 'succeeded', '清除旧取消标记后，再次重试应能成功');
+  assert.equal(manager.getResult(jobId, 0).toString(), 'final-bytes');
+});
+
 test('没有可复用结果时明确拒绝重下，让面板走完整重跑', async () => {
   const manager = createJobManager({
     provider: { submit: async () => ({ taskId: 'x' }), poll: async () => ({ status: 'FAILED', errorCode: 'BOOM' }) },
@@ -186,4 +253,60 @@ test('纯生成没有底稿时明确说「没有可对比的原图」而不是�
   assert.equal(manager.get(jobId).hasOrigin, false);
   assert.throws(() => manager.getOrigin(jobId), { code: 'ORIGIN_UNAVAILABLE' });
   assert.throws(() => manager.getOrigin('00000000-0000-0000-0000-000000000000'), { code: 'JOB_NOT_FOUND' });
+});
+
+test('BFL 提交的成本元数据在成功时转成 credits 提示进 notice', async () => {
+  const provider = {
+    submit: async () => ({ taskId: 'cost-1', cost: { channel: 'bfl', endpoint: '/v1/flux-pro-1.0-fill', pixels: 2048 * 2560, imageCount: 1 } }),
+    poll: async () => ({ status: 'SUCCEEDED', resultUrls: ['u'] }),
+    download: async () => Buffer.from('result')
+  };
+  const manager = createJobManager({ provider, sleep: async () => {} });
+  const { jobId } = await manager.start({ operation: 'editMasked' });
+  const job = await settled(manager, jobId);
+  assert.match(job.notice, /消耗 5 credits/);
+  assert.match(job.notice, /约 ¥/);
+});
+
+test('原有 notice 与成本提示 coexisting，且只追加一次', async () => {
+  const provider = {
+    submit: async () => ({ taskId: 'cost-2', notice: 'FLUX 是英文模型。', cost: { channel: 'openai', label: 'Gemini', model: 'gemini-3.1-flash-image', imageCount: 1 } }),
+    poll: async () => ({ status: 'SUCCEEDED', resultUrls: ['u'] }),
+    download: async () => Buffer.from('result')
+  };
+  const manager = createJobManager({ provider, sleep: async () => {} });
+  const { jobId } = await manager.start({ operation: 'generate' });
+  const job = await settled(manager, jobId);
+  assert.match(job.notice, /FLUX 是英文模型/);
+  assert.match(job.notice, /约消耗 ¥0\.26/);
+  // 重复调用不应重复追加（recover 或重复结算都走同一条路径）。
+  assert.equal((job.notice.match(/约消耗/g) || []).length, 1);
+});
+
+test('只重下失败的任务在 recover 成功时也能补上成本提示', async () => {
+  let downloads = 0;
+  const provider = {
+    submit: async () => ({ taskId: 'cost-3', cost: { channel: 'aliyun', model: 'wan2.7-image', imageCount: 1 } }),
+    poll: async () => ({ status: 'SUCCEEDED', resultUrls: ['u'] }),
+    download: async () => {
+      downloads++;
+      if (downloads === 1) throw new Error('ECONNRESET');
+      return Buffer.from('result');
+    }
+  };
+  const manager = createJobManager({ provider, sleep: async () => {} });
+  const { jobId } = await manager.start({ operation: 'generate' });
+  assert.equal((await settled(manager, jobId)).status, 'failed');
+  await manager.recover(jobId);
+  const recovered = manager.get(jobId);
+  assert.equal(recovered.status, 'succeeded');
+  assert.match(recovered.notice, /约消耗/);
+});
+
+test('provider 没上报成本时 notice 不加任何消耗字样', async () => {
+  const provider = { submit: async () => ({ taskId: 'cost-4' }), poll: async () => ({ status: 'SUCCEEDED', resultUrls: ['u'] }), download: async () => Buffer.from('result') };
+  const manager = createJobManager({ provider, sleep: async () => {} });
+  const { jobId } = await manager.start({ operation: 'generate' });
+  const job = await settled(manager, jobId);
+  assert.equal(job.notice.indexOf('消耗'), -1);
 });

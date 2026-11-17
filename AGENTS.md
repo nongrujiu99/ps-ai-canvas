@@ -1,7 +1,7 @@
 # AGENTS.md · 项目强制约定
 
 > 任何 AI 会话或开发者在本仓库做改动前，**先读这一页**。这里写的是不可协商的约束。
-> 详细技术说明见 `README.md`；面板视觉与布局的完整规范见 **`docs/ui-style-guide.md`**。
+> 详细技术说明见 `README.md`；**二次开发指南见 `docs/development-guide.md`**；面板视觉与布局的完整规范见 **`docs/ui-style-guide.md`**。
 
 ---
 
@@ -70,6 +70,11 @@
 改完必须同步并验证：
 
 ```bash
+# 推荐使用根目录一键同步与验证脚本（跨平台自动同步 5 个唯一源并比对）
+npm run sync
+npm run verify
+
+# 或手动复制
 cp hosts/shared/panel.css hosts/cep/css/panel.css
 cp hosts/shared/panel.css hosts/uxp/css/panel.css
 node --test hosts/cep/test/*.test.js hosts/uxp/test/*.test.js

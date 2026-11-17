@@ -398,7 +398,8 @@ function createVertexProvider({
     const notice = Number(job.n) > 1
       ? '这个通道一次只出一张，已按 1 张生成（候选数量 2~4 只有百炼/中转站支持）。'
       : '';
-    return { taskId, size: `${requested.width}*${requested.height}`, notice, seed };
+    return { taskId, size: `${requested.width}*${requested.height}`, notice, seed,
+      cost: { channel: 'openai', label: 'gemini', model, imageCount: 1 } };
   }
 
   function buildBody(inputBytes, prompt, padded) {
@@ -494,7 +495,8 @@ function createVertexProvider({
         + ' 补到 ' + rendered.padded.width + 'x' + rendered.padded.height + '（' + rendered.padded.ratio + '）'
         + ' 档位 ' + (imageSize || sizeTierFor(rendered.padded.width, rendered.padded.height))
         + '，合成只取新增条带 ' + strips.length + ' 条\n');
-      return { taskId, size: canvas.width + '*' + canvas.height, notice: '' };
+      return { taskId, size: canvas.width + '*' + canvas.height, notice: '',
+        cost: { channel: 'openai', label: 'gemini', model, imageCount: 1 } };
     }
 
     // ── 选区编辑：只把选区那块（加一圈上下文）送去改，改完贴回原图 ─────────
@@ -521,7 +523,8 @@ function createVertexProvider({
       process.stderr.write('[vertex] 选区编辑 画布 ' + canvas.width + 'x' + canvas.height
         + ' 只送选区 ' + (region.right - region.left) + 'x' + (region.bottom - region.top)
         + '（含 30% 上下文），选区外原样贴回\n');
-      return { taskId, size: canvas.width + '*' + canvas.height, notice: '' };
+      return { taskId, size: canvas.width + '*' + canvas.height, notice: '',
+        cost: { channel: 'openai', label: 'gemini', model, imageCount: 1 } };
     }
 
     // ── 整张重绘（editWhole，或选区识别不出来的兜底）───────────────────────
@@ -531,7 +534,8 @@ function createVertexProvider({
     pending.set(taskId, { source: rendered.bytes, composite: null });
     process.stderr.write('[vertex] 整图编辑 画布 ' + canvas.width + 'x' + canvas.height
       + ' 补到 ' + rendered.padded.width + 'x' + rendered.padded.height + '\n');
-    return { taskId, size: canvas.width + '*' + canvas.height, notice: '' };
+    return { taskId, size: canvas.width + '*' + canvas.height, notice: '',
+      cost: { channel: 'openai', label: 'gemini', model, imageCount: 1 } };
   }
 
   async function submit(job) {

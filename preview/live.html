@@ -101,6 +101,12 @@
       <p id="status" role="status" class="status"></p>
     </section>
 
+    <div id="history-bar" class="history-bar hidden">
+      <button id="history-prev" class="mini" type="button" title="查看上一批生成结果">‹ 上一批</button>
+      <span id="history-label" class="history-label" aria-live="polite">批次 1 / 1</span>
+      <button id="history-next" class="mini" type="button" title="查看下一批生成结果">下一批 ›</button>
+    </div>
+
     <section id="previews" class="previews hidden" aria-label="生成结果"></section>
 
     <!-- 结果预览：点候选图（或右上角放大键）进入。两层图叠放 + 一条竖线滑块，

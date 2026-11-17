@@ -78,7 +78,9 @@
     var wait = options.wait || function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); };
     var confirmCost = options.confirmCost || function () { return true; };
     var notify = options.notify || function () {};
-    var state = { mode: 'edit', status: 'idle', message: '', previews: [], origin: null, jobId: null, capture: null, errorCode: '' };
+    var state = { mode: 'edit', status: 'idle', message: '', previews: [], origin: null, jobId: null, capture: null, errorCode: '', historyCount: 0, historyIndex: -1 };
+    var historyList = [];
+    var historyIndex = -1;
     function change(patch) {
       Object.keys(patch).forEach(function (key) { state[key] = patch[key]; });
       notify(Object.assign({}, state));
@@ -101,7 +103,30 @@
           // 种子跟着结果一起显示：留空时是服务端摇的，不说出来的话「这张不错、再出一遍」
           // 就永远做不到——而这张模型的种子是真生效的。
           var seedNote = job.seed === undefined || job.seed === null ? '' : ' · 种子 ' + job.seed;
-          return Promise.all(tasks).then(function (previews) { var origin = wantsOrigin ? previews.pop() : null; if (state.status === 'cancelled') return; change({ status: 'preview', previews: previews, origin: origin, message: '选择满意的结果后应用。' + seedNote + (job.notice ? '注意：' + job.notice : '') }); return previews; });
+          return Promise.all(tasks).then(function (previews) {
+            var origin = wantsOrigin ? previews.pop() : null;
+            if (state.status === 'cancelled') return;
+            var msg = '选择满意的结果后应用。' + seedNote + (job.notice ? '注意：' + job.notice : '');
+            var entry = {
+              previews: previews,
+              origin: origin,
+              message: msg,
+              capture: state.capture,
+              jobId: jobId
+            };
+            historyList.push(entry);
+            if (historyList.length > 5) historyList.shift();
+            historyIndex = historyList.length - 1;
+            change({
+              status: 'preview',
+              previews: previews,
+              origin: origin,
+              message: msg,
+              historyCount: historyList.length,
+              historyIndex: historyIndex
+            });
+            return previews;
+          });
         }
         if (job.status === 'failed' || job.status === 'cancelled') throw issue(job.errorCode || 'JOB_FAILED', job.status === 'cancelled' ? '任务已取消。' : failureMessage(job));
         return wait(1200).then(function () { return poll(jobId); });
@@ -297,7 +322,13 @@
                   // 用户只会更困惑。有原因就直接说原因。
                   : result.trimReason ? '结果没有贴回画布（' + explainTrimReason(result.trimReason) + '）。'
                     : '结果已在新文档中打开。';
-        change({ status: 'applied', capture: null, message: message });
+        // 应用成功后清空会话历史：这些批次的 capture 已经（或即将）被释放，
+        // 再留在 historyList 里，navHistory 切回去点「应用」就会拿一个失效的
+        // capture 去贴回；而服务端结果 10 分钟 TTL 过期后，旧 previews 也是死的。
+        // 结果已经落进 PS，用户不需要再回头应用同一批。
+        historyList = [];
+        historyIndex = -1;
+        change({ status: 'applied', capture: null, message: message, historyCount: 0, historyIndex: -1 });
         return result;
       });
     }
@@ -307,8 +338,25 @@
       change({ status: 'cancelled', message: '已停止等待；云端任务可能仍在运行。' });
       return service.cancel(state.jobId);
     }
+    function navHistory(delta) {
+      if (historyList.length <= 1) return;
+      var next = historyIndex + delta;
+      if (next < 0 || next >= historyList.length) return;
+      historyIndex = next;
+      var cur = historyList[historyIndex];
+      change({
+        status: 'preview',
+        previews: cur.previews,
+        origin: cur.origin,
+        message: cur.message,
+        capture: cur.capture,
+        jobId: cur.jobId,
+        historyCount: historyList.length,
+        historyIndex: historyIndex
+      });
+    }
     function dispose() { if (state.capture && host.dispose) host.dispose(state.capture); change({ capture: null }); }
-    return { state: function () { return Object.assign({}, state); }, setMode: function (mode) { change({ mode: mode, scalesDerived: false }); }, run: run, accept: accept, cancel: cancel, dispose: dispose };
+    return { state: function () { return Object.assign({}, state); }, setMode: function (mode) { change({ mode: mode, scalesDerived: false }); }, run: run, accept: accept, cancel: cancel, dispose: dispose, navHistory: navHistory };
   }
 
   return { createController: createController };

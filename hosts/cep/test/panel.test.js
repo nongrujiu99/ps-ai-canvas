@@ -351,3 +351,52 @@ test('原图取失败只是没有对比图，结果照常可用', async () => {
   assert.equal(state.previews.length, 1);
   assert.equal(state.origin, null);
 });
+
+test('多批生成结果存入会话历史，navHistory 可以在批次间回溯', async () => {
+  const { host, service } = fake();
+  let count = 0;
+  service.result = async (jobId, idx) => `data:image/png;base64,P${++count}`;
+  const controller = createController({ host, service, wait: async () => {} });
+
+  await controller.run({ mode: 'edit', prompt: '第一批' });
+  assert.equal(controller.state().historyCount, 1);
+  assert.equal(controller.state().historyIndex, 0);
+  assert.equal(controller.state().previews[0], 'data:image/png;base64,P1');
+
+  await controller.run({ mode: 'edit', prompt: '第二批' });
+  assert.equal(controller.state().historyCount, 2);
+  assert.equal(controller.state().historyIndex, 1);
+  assert.equal(controller.state().previews[0], 'data:image/png;base64,P2');
+
+  // 回溯到上一批
+  controller.navHistory(-1);
+  assert.equal(controller.state().historyIndex, 0);
+  assert.equal(controller.state().previews[0], 'data:image/png;base64,P1');
+
+  // 切回最新一批
+  controller.navHistory(1);
+  assert.equal(controller.state().historyIndex, 1);
+  assert.equal(controller.state().previews[0], 'data:image/png;base64,P2');
+});
+
+test('应用结果后会话历史清空，避免再应用到已释放的旧批次', async () => {
+  // 结果已经落进 PS，historyList 里那些 capture 指向的是已被 dispose 的对象；
+  // 继续留在历史里，navHistory 切回去点「应用」就会拿一个失效 capture 去贴回。
+  const { host, service } = fake();
+  let count = 0;
+  service.result = async () => `data:image/png;base64,P${++count}`;
+  const controller = createController({ host, service, wait: async () => {} });
+
+  await controller.run({ mode: 'edit', prompt: '第一批' });
+  await controller.run({ mode: 'edit', prompt: '第二批' });
+  assert.equal(controller.state().historyCount, 2, '应用前有两批');
+
+  await controller.accept(0);
+  assert.equal(controller.state().status, 'applied');
+  assert.equal(controller.state().historyCount, 0, '应用后历史必须清空');
+  assert.equal(controller.state().historyIndex, -1);
+  // 历史清空后 navHistory 应是无操作，不能把旧 previews 又翻回来。
+  controller.navHistory(-1);
+  assert.equal(controller.state().historyIndex, -1);
+  assert.equal(controller.state().status, 'applied');
+});

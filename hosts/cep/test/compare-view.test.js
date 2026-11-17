@@ -39,12 +39,17 @@ function fakeDom() {
     addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
     fire(type, event) { (this.listeners[type] || []).forEach((fn) => fn(event || {})); },
   };
-  return { $: (id) => nodes[id], nodes, doc };
+  const win = {
+    listeners: {},
+    addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
+    fire(type, event) { (this.listeners[type] || []).forEach((fn) => fn(event || {})); },
+  };
+  return { $: (id) => nodes[id], nodes, doc, win };
 }
 
 function setup() {
   const dom = fakeDom();
-  const view = createCompareView({ $: dom.$, document: dom.doc });
+  const view = createCompareView({ $: dom.$, document: dom.doc, window: dom.win });
   view.bind();
   return { dom, view, nodes: dom.nodes };
 }
@@ -155,4 +160,38 @@ test('键盘：Esc 关闭，方向键每次 2%', () => {
 
   dom.doc.fire('keydown', { key: 'Escape' });
   assert.equal(nodes.viewer.classes.has('hidden'), true);
+});
+
+test('键盘：空格长按临时切原图，松开恢复', () => {
+  const { view, dom, nodes } = setup();
+  view.open({ before: 'b', after: 'a' });
+  assert.equal(nodes.compare.props['--cmp-x'], '50%');
+
+  dom.doc.fire('keydown', { key: ' ' });
+  assert.equal(nodes.compare.props['--cmp-x'], '0%');
+
+  dom.doc.fire('keyup', { key: ' ' });
+  assert.equal(nodes.compare.props['--cmp-x'], '50%');
+});
+
+test('空格按住时窗口失焦：竖线自动复原，不卡在全是原图的骗人状态', () => {
+  const { view, dom, nodes } = setup();
+  view.open({ before: 'b', after: 'a' });
+  view.setPosition(68);
+
+  dom.doc.fire('keydown', { key: ' ' });
+  assert.equal(nodes.compare.props['--cmp-x'], '0%', '按住空格切到原图');
+
+  // Alt+Tab：document 收不到 keyup，只有 window 的 blur。
+  dom.win.fire('blur');
+  assert.equal(nodes.compare.props['--cmp-x'], '68%', '失焦必须恢复到按住前的位置');
+
+  // 复原后再松开不能二次覆盖（keyup 此时应是无害的空操作）。
+  dom.doc.fire('keyup', { key: ' ' });
+  assert.equal(nodes.compare.props['--cmp-x'], '68%');
+
+  // 失焦复原后重新按住，仍能记住新的起点。
+  dom.doc.fire('keydown', { key: ' ' });
+  dom.win.fire('blur');
+  assert.equal(nodes.compare.props['--cmp-x'], '68%');
 });

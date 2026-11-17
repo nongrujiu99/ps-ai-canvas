@@ -388,6 +388,115 @@ test('masked edit hands the real mask to the model and keeps outside pixels unto
   assert.deepEqual(at(100, 100), [0x20, 0x4a, 0x80]);
 });
 
+// 本次真根因：PS 导出的抓图 PNG 带 alpha 通道，但 alpha 全 255（inspect 判定
+// transparentBounds=null、transparentCount=0）。BFL 按解码后的 raw 算体积，
+// 2048x2560 的 RGBA = 20.00MB 正好顶线被 422 拒；去 alpha 变 RGB 只有 15MB。
+// 所以「没有透明像素」不代表「可以带 alpha 通道发出去」——必须无条件去掉。
+test('带 alpha 通道但全不透明的图，fill 也要去掉 alpha（避免 BFL 按 RGBA 算到 20MB）', async () => {
+  const W = 1024, H = 1024;
+  // 造一张带 alpha 通道、但 alpha 全 255 的 PNG
+  const px = Buffer.alloc(W * H * 4);
+  for (let i = 0; i < W * H; i++) { px[i * 4] = 60; px[i * 4 + 1] = 90; px[i * 4 + 2] = 130; px[i * 4 + 3] = 255; }
+  const withAlpha = await sharp(px, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
+  assert.equal((await sharp(withAlpha).metadata()).hasAlpha, true, '夹具必须带 alpha 通道');
+  const mask = await sharp({ create: { width: W, height: H, channels: 3, background: '#000000' } })
+    .composite([{ input: await solid(200, 200, '#ffffff'), left: 400, top: 400 }])
+    .png().toBuffer();
+  const { calls, fetchImpl } = upstream({ image: await solid(W, H, '#204a80') });
+  const provider = createBflProvider({ fetchImpl, baseUrl: BASE, apiKey: KEY });
+
+  await provider.submit({
+    operation: 'editMasked',
+    image: rawCapture(withAlpha),
+    mask: { kind: 'encoded', dataUrl: 'data:image/png;base64,' + mask.toString('base64') },
+    prompt: 'x', n: 1
+  });
+
+  const body = JSON.parse(calls[0].init.body);
+  const sent = await sharp(Buffer.from(body.image, 'base64')).metadata();
+  assert.equal(sent.hasAlpha, false, '发给 BFL 的图必须没有 alpha 通道');
+  assert.equal(sent.width, W, '尺寸不能变，否则 mask 对不齐');
+  assert.equal(sent.height, H);
+});
+
+test('大图 fill 超过上传上限时转 JPEG，尺寸不变、mask 仍原样', async () => {
+  const crypto = require('node:crypto');
+  const W = 2400, H = 2400;
+  // 纯随机像素让 PNG 压不动（实测 16.5MB），稳定越过 12MB 阈值
+  const noise = await sharp(crypto.randomBytes(W * H * 3), { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
+  assert.ok(noise.length > 12 * 1048576, '夹具本身要够大，否则测不到转换分支');
+  const mask = await sharp({ create: { width: W, height: H, channels: 3, background: '#000000' } })
+    .composite([{ input: await solid(300, 300, '#ffffff'), left: 900, top: 900 }])
+    .png().toBuffer();
+  const { calls, fetchImpl } = upstream({ image: await solid(W, H, '#204a80') });
+  const provider = createBflProvider({ fetchImpl, baseUrl: BASE, apiKey: KEY });
+
+  await provider.submit({
+    operation: 'editMasked',
+    image: rawCapture(noise),
+    mask: { kind: 'encoded', dataUrl: 'data:image/png;base64,' + mask.toString('base64') },
+    prompt: 'a patch',
+    n: 1
+  });
+
+  const body = JSON.parse(calls[0].init.body);
+  const sentImageBuf = Buffer.from(body.image, 'base64');
+  const sentImage = await sharp(sentImageBuf).metadata();
+  const sentMask = await sharp(Buffer.from(body.mask, 'base64')).metadata();
+  assert.equal(sentImage.format, 'jpeg', '超限底图要转 JPEG 才能避开 20MB 上限');
+  assert.ok(sentImageBuf.length < noise.length, '转换后体积必须真的变小');
+  assert.equal(sentImage.hasAlpha, false, 'JPEG 天然无 alpha');
+  assert.equal(sentImage.width, W, '尺寸不能变，否则 mask 对不齐');
+  assert.equal(sentImage.height, H);
+  assert.equal(sentMask.format, 'png', 'mask 不能被转换，边界要保精确');
+  assert.equal(sentMask.width, W);
+});
+
+test('小图 fill 保持 PNG，只去 alpha 不做无谓转码', async () => {
+  const W = 512, H = 512;
+  const base = await solid(W, H, '#204a80');
+  const mask = await sharp({ create: { width: W, height: H, channels: 3, background: '#000000' } })
+    .composite([{ input: await solid(120, 120, '#ffffff'), left: 200, top: 200 }])
+    .png().toBuffer();
+  const { calls, fetchImpl } = upstream({ image: await solid(W, H, '#c02020') });
+  const provider = createBflProvider({ fetchImpl, baseUrl: BASE, apiKey: KEY });
+  await provider.submit({
+    operation: 'editMasked',
+    image: rawCapture(base),
+    mask: { kind: 'encoded', dataUrl: 'data:image/png;base64,' + mask.toString('base64') },
+    prompt: 'x', n: 1
+  });
+  const body = JSON.parse(calls[0].init.body);
+  const sent = await sharp(Buffer.from(body.image, 'base64')).metadata();
+  assert.equal(sent.format, 'png', '没超限就保持 PNG，零额外损失');
+});
+
+// 关键场景：高分辨率、低细节纯色图。PNG 文件可能压到几百 KB（不触发按文件字节的
+// 转 JPEG 分支），但解码后 raw = w*h*3 远超 BFL 20MB 硬限。旧代码这时静默发出去、
+// 上游 422，用户只看到「file size exceeds 20MB」而猜不到是画布太大。现在要如实提示。
+test('raw 超 20MB 但文件字节很小时，fill 也如实提示尺寸风险（不静默 422）', async () => {
+  const W = 3000, H = 3000; // raw RGB = 27MB > 20MB；纯色 PNG 文件却很小
+  const base = await solid(W, H, '#204a80');
+  assert.ok(base.length < 12 * 1048576, '夹具是纯色大图，文件字节应远低于 12MB 转换线');
+  const mask = await sharp({ create: { width: W, height: H, channels: 3, background: '#000000' } })
+    .composite([{ input: await solid(200, 200, '#ffffff'), left: 1400, top: 1400 }])
+    .png().toBuffer();
+  const { calls, fetchImpl } = upstream({ image: await solid(64, 64, '#c02020') });
+  const provider = createBflProvider({ fetchImpl, baseUrl: BASE, apiKey: KEY });
+  const result = await provider.submit({
+    operation: 'editMasked',
+    image: rawCapture(base),
+    mask: { kind: 'encoded', dataUrl: 'data:image/png;base64,' + mask.toString('base64') },
+    prompt: 'x', n: 1
+  });
+
+  assert.match(result.notice, /超过 BFL 20MB 上限/, 'raw 超限必须给出面板可见的提示');
+  assert.match(result.notice, /缩小选区/, '提示要可执行，而不是让用户猜');
+  const body = JSON.parse(calls[0].init.body);
+  const sent = await sharp(Buffer.from(body.image, 'base64')).metadata();
+  assert.equal(sent.format, 'png', '文件字节没超限就不转 JPEG（转了也救不了 raw）');
+});
+
 test('models list stays short and does not include kontext', () => {
   assert.ok(TEXT_MODELS.includes(DEFAULT_TEXT_MODEL));
   assert.ok(TEXT_MODELS.every((id) => !/kontext/i.test(id)), 'kontext 只认 4 档 aspect_ratio，放进文生图会静默改比例');

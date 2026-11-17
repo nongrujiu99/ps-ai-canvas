@@ -35,6 +35,7 @@
   function createCompareView(options) {
     var $ = options.$;
     var doc = options.document || (typeof document === 'undefined' ? null : document);
+    var win = options.window || (typeof window === 'undefined' ? null : window);
     var state = { open: false, compare: false, position: 50, index: 0, count: 1, before: null, after: null };
     var dragging = false;
 
@@ -110,9 +111,21 @@
       if (hasBefore) measure();
     }
 
+    var preSpacePos = null;
+
+    // 空格是「按住临时看原图，松开恢复」。keyup 只挂在 document 上，按住空格切走
+    // 窗口（Alt+Tab）就永远收不到松开事件，竖线会卡在 0（全是原图）直到用户再按
+    // 一下空格。失焦时主动复原，避免对比图停在一个骗人的状态。
+    function releaseSpace() {
+      if (preSpacePos === null) return;
+      setPosition(preSpacePos);
+      preSpacePos = null;
+    }
+
     function open(view) {
       view = view || {};
       if (!view.after) return;
+      preSpacePos = null;
       state.after = view.after;
       state.before = view.before || null;
       state.compare = !!state.before;
@@ -136,6 +149,7 @@
 
     function close() {
       state.open = false;
+      preSpacePos = null;
       show('viewer', false);
       clearImages();
     }
@@ -171,12 +185,29 @@
           if (!state.open) return;
           if (event.key === 'Escape') { close(); return; }
           if (!state.compare) return;
+          // 空格键长按：瞬间切回原图（位置推到 0），松开复原，贴合修图师手艺习惯
+          if (event.key === ' ' || event.code === 'Space') {
+            if (preSpacePos === null) {
+              preSpacePos = state.position;
+              setPosition(0);
+            }
+            if (event.preventDefault) event.preventDefault();
+            return;
+          }
           if (event.key === 'ArrowLeft') { setPosition(state.position - 2); if (event.preventDefault) event.preventDefault(); }
           if (event.key === 'ArrowRight') { setPosition(state.position + 2); if (event.preventDefault) event.preventDefault(); }
         });
+        doc.addEventListener('keyup', function (event) {
+          if (preSpacePos !== null && (event.key === ' ' || event.code === 'Space')) {
+            releaseSpace();
+            if (event.preventDefault) event.preventDefault();
+          }
+        });
       }
-      if (typeof window !== 'undefined' && window.addEventListener) {
-        window.addEventListener('resize', measure);
+      if (win && win.addEventListener) {
+        win.addEventListener('resize', measure);
+        // 失焦把这个事件带不到 document 的 keyup，必须单独兜住。
+        win.addEventListener('blur', releaseSpace);
       }
       // 图加载完才知道真实比例，比例不一致的提醒要等这一刻。
       if ($('compare-after')) $('compare-after').onload = function () { note(); measure(); };

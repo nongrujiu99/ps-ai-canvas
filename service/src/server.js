@@ -7,6 +7,25 @@ const { validateJob, problem } = require('./contract');
 const { decodeCapture, inspectImage, prepareExpansion, previewPng } = require('./image-inspection');
 const { saneBounds, photoLikeBounds, deriveScales, rectifyExpandBounds } = require('./expand-compose');
 
+// Origin 白名单匹配。三类规则，各有各的理由：
+//   - 'null' 是浏览器 opaque origin 的字面值（部分 file:// 面板就是它），必须**精确**匹配。
+//     以前用 startsWith('null')，畸形 Origin「null.evil.example」也能混进来。
+//   - 以 '://' 结尾的是 scheme 前缀（plugin://、file://）。README 明确要求按前缀放行：
+//     扩展 ID 会变，写死成 plugin://某ID 会让面板连不上服务。**裸前缀本身必须放行**——
+//     CEP 面板（Chromium/CEF）跨域请求的 Origin 序列化就是裸 `file://`，UXP 面板是裸
+//     `plugin://`；2026-11-17 曾把「前缀后必须有内容」当安全条件，结果面板全部 403
+//     「不允许的请求来源」，是真实线上回归。畸形来源由 token 第二道防线兜底。
+//   - 其余是精确条目（如测试里的 plugin://studio），一律精确匹配，不做前缀放宽。
+function isAllowedOrigin(origin, allowedOrigins) {
+  if (!origin) return true; // 非浏览器客户端没有 Origin，仍要过 X-STUDIO-Token 校验
+  return allowedOrigins.some((allowed) => {
+    if (allowed === 'null') return origin === 'null';
+    // indexOf===0 允许裸前缀（origin === allowed）与带后缀的变体；不再要求 length>。
+    if (/:\/\/$/.test(allowed)) return origin.indexOf(allowed) === 0;
+    return origin === allowed;
+  });
+}
+
 function createServer({ jobManager, credentialStore, channelStore, channelTester, allowedOrigins = [], clientToken, maxBodyBytes = 160 * 1024 * 1024 }) {
   if (!clientToken || typeof clientToken !== 'string') throw new Error('Local connection token is required');
   const expectedToken = Buffer.from(clientToken);
@@ -48,7 +67,7 @@ function createServer({ jobManager, credentialStore, channelStore, channelTester
       send(res, 200, { status: 'ok' });
       return;
     }
-    if (origin && !allowedOrigins.some((allowed) => origin === allowed || origin.startsWith(allowed))) {
+    if (origin && !isAllowedOrigin(origin, allowedOrigins)) {
       send(res, 403, { code: 'FORBIDDEN', message: '不允许的请求来源。' });
       return;
     }
@@ -244,4 +263,4 @@ function createServer({ jobManager, credentialStore, channelStore, channelTester
   });
 }
 
-module.exports = { createServer };
+module.exports = { createServer, isAllowedOrigin };
