@@ -9,6 +9,16 @@ Windows Photoshop 的 AI 选区编辑、扩图与文生图面板。面板在 Pho
 
 > 这是原型项目。CEP/UXP 在真实 Photoshop 中的加载、蒙版羽化与图层回填尚未逐版本实测；详见 [兼容性记录](docs/compatibility-matrix.md)。生成请求可能产生费用，请先配置渠道并确认单价。
 
+## 界面预览
+
+面板运行在 Photoshop 内部，三种模式、倍率推导、预览对比、渠道配置都在同一处完成。
+
+<p align="center">
+  <img src="preview/live-result.png" width="32%" alt="扩图结果与倍率推导">
+  <img src="preview/live-settings.png" width="32%" alt="渠道设置页">
+  <img src="preview/live-running.png" width="32%" alt="生成中状态">
+</p>
+
 ## 目录
 
 - [环境要求](#环境要求)
